@@ -1,205 +1,259 @@
 import streamlit as st
+import sqlite3
 import pandas as pd
-from io import BytesIO
-from datetime import date
+import time
 
-# --- 1. CONFIGURAÇÃO ---
-st.set_page_config(page_title="Gestor de OKR", layout="wide", page_icon="💼")
+# --- Configuração da Página ---
+st.set_page_config(page_title="Sistema OKR", layout="wide")
 
-# --- 2. CONSTANTES ---
-OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
-
-# --- 3. FUNÇÕES ---
-
-def carregar_dados_upload(uploaded_file):
-    try:
-        if uploaded_file.name.endswith('.csv'):
-            df = pd.read_csv(uploaded_file)
-        else:
-            df = pd.read_excel(uploaded_file)
-            
-        cols_texto = ['Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 'Status', 'Responsável']
-        for col in cols_texto:
-            if col in df.columns:
-                df[col] = df[col].astype(str).replace('nan', '').fillna('')
-        
-        if 'Prazo' in df.columns:
-            df['Prazo'] = pd.to_datetime(df['Prazo'], errors='coerce')
-            
-        cols_num = ['Avanço', 'Alvo', 'Progresso (%)']
-        for col in cols_num:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-                
-        return df
-    except Exception as e:
-        st.error(f"Erro ao ler arquivo: {e}")
-        return None
-
-def criar_template_vazio():
-    return pd.DataFrame(columns=[
-        'Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 
-        'Status', 'Responsável', 'Prazo', 'Avanço', 'Alvo', 'Progresso (%)'
-    ])
-
-def converter_para_excel(df):
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df_exp = df.copy()
-        if 'Prazo' in df_exp.columns:
-            df_exp['Prazo'] = df_exp['Prazo'].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else '')
-        df_exp.to_excel(writer, index=False, sheet_name='OKRs')
-    return output.getvalue()
-
-def calcular_progresso(row):
-    try:
-        av = float(row['Avanço'])
-        al = float(row['Alvo'])
-        if al > 0: return min(av / al, 1.0)
-        return 0.0
-    except: return 0.0
-
-def barra_progresso_html(valor):
-    if pd.isna(valor): valor = 0.0
-    pct = int(valor * 100)
-    cor = "#ef4444" if pct < 30 else "#eab308" if pct < 70 else "#22c55e"
-    return f"""<div style="width:100%; background:#e5e7eb; border-radius:4px; height:18px; display:flex; align-items:center;"><div style="background:{cor}; width:{pct}%; height:100%; border-radius:4px; transition:width 0.3s;"></div><span style="margin-left:8px; font-size:12px; font-weight:bold; color:#333;">{pct}%</span></div>"""
-
-# --- 4. MEMÓRIA ---
-if 'df_ativo' not in st.session_state:
-    st.session_state['df_ativo'] = criar_template_vazio()
-
-if 'deptos_extras' not in st.session_state:
-    st.session_state['deptos_extras'] = ["Comercial", "Financeiro", "Operacional", "RH", "Tecnologia", "Marketing"]
-
-# --- 5. APP PRINCIPAL ---
-st.title("💼 Gestor de OKRs")
-
-df = st.session_state['df_ativo']
-deptos_do_arquivo = [d for d in df['Departamento'].unique() if d and d.strip()]
-lista_deptos_final = sorted(list(set(deptos_do_arquivo) | set(st.session_state['deptos_extras'])))
-
-# --- MENU LATERAL ---
-with st.sidebar:
-    st.header("📂 Arquivo")
-    upload = st.file_uploader("Carregar Planilha Cliente", type=['xlsx', 'csv'])
+# --- Banco de Dados (SQLite) ---
+def init_db():
+    conn = sqlite3.connect('okrs.db')
+    c = conn.cursor()
     
-    if upload is not None:
-        if st.button("🔄 Carregar Dados", type="primary"):
-            df_novo = carregar_dados_upload(upload)
-            if df_novo is not None:
-                st.session_state['df_ativo'] = df_novo
-                st.session_state['deptos_extras'] = [] 
-                st.success("Carregado!")
-                st.rerun()
+    # Tabela de Departamentos
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS departamentos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nome TEXT UNIQUE
+        )
+    ''')
     
-    if st.button("🗑️ Limpar / Novo Projeto"):
-        st.session_state['df_ativo'] = criar_template_vazio()
-        st.rerun()
+    # Tabela de Objetivos
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS objetivos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            departamento_id INTEGER,
+            descricao TEXT,
+            FOREIGN KEY (departamento_id) REFERENCES departamentos (id)
+        )
+    ''')
+    
+    # Tabela de Key Results (KRs)
+    c.execute('''
+        CREATE TABLE IF NOT EXISTS krs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            objetivo_id INTEGER,
+            descricao TEXT,
+            meta REAL,
+            atual REAL,
+            FOREIGN KEY (objetivo_id) REFERENCES objetivos (id)
+        )
+    ''')
+    conn.commit()
+    conn.close()
 
-    st.markdown("---")
-    with st.expander("🏢 Gerenciar Departamentos"):
-        novo_d = st.text_input("Novo:")
-        if st.button("Add Dept"):
-            if novo_d and novo_d not in st.session_state['deptos_extras']:
-                st.session_state['deptos_extras'].append(novo_d)
-                st.rerun()
-        
-        rem_d = st.selectbox("Remover da Lista:", ["-"] + st.session_state['deptos_extras'])
-        if st.button("Del Dept"):
-            if rem_d != "-":
-                st.session_state['deptos_extras'].remove(rem_d)
-                st.rerun()
+# --- Funções de Manipulação de Dados ---
+def add_departamento(nome):
+    conn = sqlite3.connect('okrs.db')
+    c = conn.cursor()
+    try:
+        c.execute('INSERT INTO departamentos (nome) VALUES (?)', (nome,))
+        conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        return False
+    finally:
+        conn.close()
 
-    st.markdown("---")
-    st.subheader("📝 Novo OKR")
-    with st.form("add_form", clear_on_submit=True):
-        f_dp = st.selectbox("Departamento", lista_deptos_final)
-        f_ob = st.text_input("Objetivo")
-        f_kr = st.text_input("KR")
-        if st.form_submit_button("Salvar"):
-            novo_reg = {
-                'Departamento': f_dp, 'Objetivo': f_ob, 'Resultado Chave (KR)': f_kr,
-                'Status': 'Não Iniciado', 'Avanço': 0, 'Alvo': 1, 'Progresso (%)': 0,
-                'Prazo': pd.to_datetime(date.today()), 'Tarefa': '', 'Responsável': ''
-            }
-            st.session_state['df_ativo'] = pd.concat([df, pd.DataFrame([novo_reg])], ignore_index=True)
+def get_departamentos():
+    conn = sqlite3.connect('okrs.db')
+    df = pd.read_sql('SELECT * FROM departamentos', conn)
+    conn.close()
+    return df
+
+def add_objetivo(departamento_id, descricao):
+    conn = sqlite3.connect('okrs.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO objetivos (departamento_id, descricao) VALUES (?, ?)', (departamento_id, descricao))
+    conn.commit()
+    conn.close()
+
+def get_objetivos(departamento_id):
+    conn = sqlite3.connect('okrs.db')
+    df = pd.read_sql('SELECT * FROM objetivos WHERE departamento_id = ?', conn, params=(departamento_id,))
+    conn.close()
+    return df
+
+def add_kr(objetivo_id, descricao, meta, atual):
+    conn = sqlite3.connect('okrs.db')
+    c = conn.cursor()
+    c.execute('INSERT INTO krs (objetivo_id, descricao, meta, atual) VALUES (?, ?, ?, ?)', 
+              (objetivo_id, descricao, meta, atual))
+    conn.commit()
+    conn.close()
+
+def get_krs_full():
+    conn = sqlite3.connect('okrs.db')
+    query = '''
+        SELECT 
+            d.nome as Departamento,
+            o.descricao as Objetivo,
+            k.descricao as KR,
+            k.meta as Meta,
+            k.atual as Atual,
+            ROUND((k.atual / k.meta) * 100, 2) as Progresso_Percentual
+        FROM krs k
+        JOIN objetivos o ON k.objetivo_id = o.id
+        JOIN departamentos d ON o.departamento_id = d.id
+    '''
+    df = pd.read_sql(query, conn)
+    conn.close()
+    return df
+
+# --- Interface de Login ---
+def check_password():
+    """Retorna True se o usuário tiver logado com sucesso."""
+    if 'logged_in' not in st.session_state:
+        st.session_state['logged_in'] = False
+
+    if not st.session_state['logged_in']:
+        st.markdown("## 🔒 Acesso Restrito - Sistema OKR")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            usuario = st.text_input("Usuário")
+            senha = st.text_input("Senha", type="password")
+            
+            if st.button("Entrar"):
+                # CREDENCIAIS SIMPLES (Altere conforme necessário)
+                if usuario == "admin" and senha == "1234":
+                    st.session_state['logged_in'] = True
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha incorretos.")
+        return False
+    return True
+
+# --- App Principal ---
+def main_app():
+    # Inicializa o banco
+    init_db()
+
+    # Sidebar para Logout
+    with st.sidebar:
+        st.title("Menu")
+        if st.button("Sair (Logout)"):
+            st.session_state['logged_in'] = False
             st.rerun()
 
-    st.markdown("---")
-    if not df.empty:
-        st.download_button(
-            label="💾 Baixar Excel Atualizado",
-            data=converter_para_excel(st.session_state['df_ativo']),
-            file_name="okr_cliente_atualizado.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+    st.title("📊 Gestão de OKRs Corporativos")
 
-# --- VISUALIZAÇÃO ---
-if df.empty:
-    st.info("Comece carregando um arquivo ou adicionando um OKR manualmente.")
-else:
-    depts_visuais = [d for d in lista_deptos_final if d in df['Departamento'].unique() or d in st.session_state['deptos_extras']]
-    abas = st.tabs(depts_visuais) if depts_visuais else []
-    
-    mudanca = False
+    tab1, tab2, tab3 = st.tabs(["📝 Cadastro", "📈 Dashboard Visual", "📥 Exportar Dados"])
 
-    for i, depto in enumerate(depts_visuais):
-        with abas[i]:
-            df_d = df[df['Departamento'] == depto]
-            if df_d.empty:
-                st.caption("Sem dados.")
-                continue
-
-            objs = [o for o in df_d['Objetivo'].unique() if o and o.strip()]
-            for obj in objs:
-                mask = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
-                df_obj = df[mask]
-                
-                media = df_obj['Progresso (%)'].mean()
-                
-                with st.expander(f"{obj}"):
-                    st.markdown(barra_progresso_html(media), unsafe_allow_html=True)
-                    
-                    c_rn, _ = st.columns([3,1])
-                    novo_nome = c_rn.text_input("Renomear:", value=obj, key=f"rn_{depto}_{obj}")
-                    if novo_nome != obj:
-                        st.session_state['df_ativo'].loc[mask, 'Objetivo'] = novo_nome
-                        st.rerun()
-                        
-                    cfg = {
-                        "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
-                        "Status": st.column_config.SelectboxColumn(options=OPCOES_STATUS, required=True),
-                        "Prazo": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                        "Departamento": None, "Objetivo": None
-                    }
-                    
-                    # --- CORREÇÃO DO WIDTH ---
-                    # Usamos use_container_width=True para garantir compatibilidade
-                    df_ed = st.data_editor(
-                        df_obj,
-                        key=f"ed_{depto}_{obj}",
-                        column_config=cfg,
-                        use_container_width=True, 
-                        num_rows="dynamic"
-                    )
-                    
-                    if not df_ed.equals(df_obj):
-                        df_ed['Progresso (%)'] = df_ed.apply(calcular_progresso, axis=1)
-                        df_ed['Departamento'] = depto
-                        df_ed['Objetivo'] = obj
-                        
-                        idx_rem = df_obj.index
-                        st.session_state['df_ativo'] = st.session_state['df_ativo'].drop(idx_rem)
-                        st.session_state['df_ativo'] = pd.concat([st.session_state['df_ativo'], df_ed], ignore_index=True)
-                        mudanca = True
-
-    if mudanca:
-        st.rerun()
-
-    st.markdown("---")
-    with st.expander("Ver Tabela Completa"):
-        # --- CORREÇÃO DO WIDTH ---
-        # Removido width=None e usado use_container_width=True
-        st.dataframe(st.session_state['df_ativo'], use_container_width=True)
+    # --- ABA 1: CADASTRO ---
+    with tab1:
+        st.header("Cadastro de Estrutura")
         
+        # 1. Cadastro de Departamento
+        with st.expander("1. Novo Departamento", expanded=True):
+            col_dep1, col_dep2 = st.columns([3, 1])
+            with col_dep1:
+                novo_dep = st.text_input("Nome do Departamento (Ex: Comercial, RH)")
+            with col_dep2:
+                st.write("") # Espaçamento
+                st.write("") 
+                if st.button("Salvar Departamento"):
+                    if novo_dep:
+                        sucesso = add_departamento(novo_dep)
+                        if sucesso:
+                            st.success(f"Departamento '{novo_dep}' criado!")
+                            time.sleep(1) # Pequeno delay para ler a mensagem
+                            st.rerun() # FORÇA A ATUALIZAÇÃO DA TELA
+                        else:
+                            st.warning("Departamento já existe.")
+                    else:
+                        st.warning("Digite um nome.")
+
+        # Carregar departamentos existentes para usar nos selects
+        df_deps = get_departamentos()
+        
+        if not df_deps.empty:
+            # 2. Cadastro de Objetivo
+            with st.expander("2. Novo Objetivo", expanded=False):
+                dep_selecionado = st.selectbox("Selecione o Departamento", df_deps['nome'], key='sel_dep_obj')
+                id_dep = df_deps[df_deps['nome'] == dep_selecionado]['id'].values[0]
+                
+                novo_obj = st.text_input("Descrição do Objetivo (Ex: Aumentar Receita)")
+                if st.button("Salvar Objetivo"):
+                    if novo_obj:
+                        add_objetivo(id_dep, novo_obj)
+                        st.success("Objetivo Cadastrado!")
+                        time.sleep(0.5)
+                        st.rerun()
+
+            # 3. Cadastro de KR
+            with st.expander("3. Novo Key Result (KR)", expanded=False):
+                # Primeiro seleciona departamento para filtrar objetivos
+                dep_sel_kr = st.selectbox("Filtrar por Departamento", df_deps['nome'], key='sel_dep_kr')
+                id_dep_kr = df_deps[df_deps['nome'] == dep_sel_kr]['id'].values[0]
+                
+                # Busca objetivos desse departamento
+                df_objs = get_objetivos(id_dep_kr)
+                
+                if not df_objs.empty:
+                    obj_sel_kr = st.selectbox("Vincular ao Objetivo", df_objs['descricao'])
+                    id_obj = df_objs[df_objs['descricao'] == obj_sel_kr]['id'].values[0]
+                    
+                    c1, c2, c3 = st.columns(3)
+                    desc_kr = c1.text_input("Descrição do KR")
+                    meta_kr = c2.number_input("Meta (Valor)", min_value=0.0)
+                    atual_kr = c3.number_input("Valor Atual", min_value=0.0)
+                    
+                    if st.button("Salvar KR"):
+                        add_kr(id_obj, desc_kr, meta_kr, atual_kr)
+                        st.success("KR Salvo com sucesso!")
+                else:
+                    st.info("Cadastre objetivos para este departamento primeiro.")
+        else:
+            st.info("👆 Comece cadastrando um departamento acima.")
+
+    # --- ABA 2: VISUALIZAÇÃO ---
+    with tab2:
+        st.header("Acompanhamento")
+        df_full = get_krs_full()
+        
+        if not df_full.empty:
+            # Filtros
+            filtro_dep = st.multiselect("Filtrar Departamento", df_full['Departamento'].unique())
+            
+            df_view = df_full if not filtro_dep else df_full[df_full['Departamento'].isin(filtro_dep)]
+            
+            # Exibição Visual
+            for i, row in df_view.iterrows():
+                with st.container():
+                    st.markdown(f"**{row['Departamento']}** | *{row['Objetivo']}*")
+                    st.write(f"📌 {row['KR']}")
+                    
+                    col_bar, col_metric = st.columns([3, 1])
+                    with col_bar:
+                        progresso = min(row['Progresso_Percentual'] / 100, 1.0) # Trava em 100% visualmente
+                        st.progress(progresso)
+                    with col_metric:
+                        st.metric("Progresso", f"{row['Progresso_Percentual']}%", f"{row['Atual']} / {row['Meta']}")
+                    st.divider()
+        else:
+            st.info("Nenhum dado cadastrado ainda.")
+
+    # --- ABA 3: EXPORTAR ---
+    with tab3:
+        st.header("Relatórios")
+        df_export = get_krs_full()
+        if not df_export.empty:
+            st.dataframe(df_export)
+            
+            # Botão de download
+            # Converter para CSV
+            csv = df_export.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Baixar em Excel (CSV)",
+                data=csv,
+                file_name='relatorio_okrs.csv',
+                mime='text/csv',
+            )
+        else:
+            st.write("Sem dados para exportar.")
+
+# --- Fluxo de Execução ---
+if __name__ == "__main__":
+    if check_password():
+        main_app()
