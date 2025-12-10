@@ -7,19 +7,20 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- CSS ENTERPRISE (VISUAL LIMPO E PROFISSIONAL) ---
+# --- CSS ENTERPRISE (VISUAL SÓBRIO) ---
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
         :root {
-            --primary: #7371ff;
-            --accent: #bef533;
+            --primary: #7371ff;       /* Mantido apenas para detalhes internos (borda lateral do card) */
+            --accent: #bef533;        /* Verde Neon (Barra de progresso) */
             --text-dark: #1e1e1e;
             --text-light: #6b7280;
             --bg-page: #f3f4f6;
             --bg-card: #ffffff;
             --border-radius: 12px;
+            --focus-color: #333333;   /* NOVA COR DE FOCO (CINZA ESCURO/PRETO) */
         }
 
         html, body, [class*="css"] {
@@ -48,30 +49,53 @@ st.markdown("""
             font-weight: 600;
         }
 
-        /* --- ABAS (DEPARTAMENTOS) - REMOÇÃO DAS LISTRAS --- */
+        /* --- ABAS (DEPARTAMENTOS) - ESTILO PRETO/NEGRITO --- */
         .stTabs [data-baseweb="tab-list"] {
             gap: 20px;
-            border-bottom: none !important; /* Remove a linha cinza de fora a fora */
+            border-bottom: none !important;
             margin-bottom: 20px;
         }
         .stTabs [data-baseweb="tab"] {
             height: auto;
             background-color: transparent;
-            border: none !important; /* Remove qualquer borda do botão */
+            border: none !important;
             padding: 8px 16px;
             font-weight: 500;
-            color: var(--text-light);
+            color: var(--text-light); /* Cor padrão (não selecionado) */
             border-radius: 6px;
             transition: all 0.2s;
         }
+        /* ESTADO SELECIONADO: PRETO E NEGRITO */
         .stTabs [aria-selected="true"] {
-            color: var(--primary) !important;
-            background-color: rgba(115, 113, 255, 0.08) !important; /* Fundo muito sutil */
-            font-weight: 600;
+            color: #000000 !important; /* Preto puro */
+            font-weight: 800 !important; /* Negrito forte */
+            background-color: transparent !important;
+            border-bottom: 3px solid #000000 !important; /* Linha preta grossa */
+            border-radius: 0px; /* Canto quadrado na linha */
         }
-        /* Remove a barrinha vermelha padrão do Streamlit no topo das abas */
         .stTabs [data-baseweb="tab"] > div:first-child {
             background-color: transparent !important; 
+        }
+
+        /* --- INPUTS E SELECTBOX (FOCO NEUTRO) --- */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+            background-color: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            color: var(--text-dark);
+            height: 42px;
+            padding-left: 12px;
+        }
+        /* FOCO: REMOVIDO O ROXO, AGORA É CINZA ESCURO */
+        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
+            border-color: var(--focus-color) !important; /* Borda Cinza Escuro */
+            box-shadow: none !important; /* Remove o brilho/glow */
+            outline: none;
+        }
+        label {
+            font-size: 0.85rem !important;
+            color: var(--text-light) !important;
+            font-weight: 500 !important;
         }
 
         /* --- EXPANDERS (OBJETIVOS) --- */
@@ -87,7 +111,7 @@ st.markdown("""
         }
         .streamlit-expanderHeader:hover {
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            color: var(--primary);
+            color: #000; /* Hover preto */
         }
         div[data-testid="stExpander"] {
             border: none;
@@ -123,28 +147,8 @@ st.markdown("""
         }
         div[data-testid="stProgress"] + div {
             font-weight: 600;
-            color: var(--primary);
+            color: var(--text-dark); /* Texto da % agora é preto também */
             font-size: 0.9rem;
-        }
-
-        /* --- INPUTS --- */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-            background-color: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            color: var(--text-dark);
-            height: 42px;
-            padding-left: 12px;
-        }
-        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
-            border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(115, 113, 255, 0.1);
-            outline: none;
-        }
-        label {
-            font-size: 0.85rem !important;
-            color: var(--text-light) !important;
-            font-weight: 500 !important;
         }
 
         /* --- BOTÕES --- */
@@ -158,8 +162,8 @@ st.markdown("""
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         button[kind="secondary"]:hover {
-            border-color: var(--primary);
-            color: var(--primary);
+            border-color: #000;
+            color: #000;
             background-color: #fcfcfd;
         }
         button[kind="secondary"]:has(div > svg) {
@@ -288,7 +292,6 @@ if check_password():
         if os.path.exists(LOGO_FILE):
             st.image(LOGO_FILE, use_column_width=True)
             st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
-        # REMOVIDO: Else com texto "CX Data" foi apagado conforme solicitado.
             
         st.markdown("### CONFIGURAÇÕES")
         
