@@ -127,10 +127,11 @@ if check_password():
             o = st.text_input("Objetivo Macro")
             if st.form_submit_button("Criar Objetivo"):
                 if o:
+                    # AJUSTE: Cria o Objetivo com KR vazio e Tarefa vazia
                     novo_okr = {
-                        'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': 'KR Inicial',
+                        'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': '',
                         'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
-                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Planejamento', 'Responsável': ''
+                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': '', 'Responsável': ''
                     }
                     st.session_state['df_master'] = pd.concat([df, pd.DataFrame([novo_okr])], ignore_index=True)
                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
@@ -157,7 +158,13 @@ if check_password():
                 for obj in objs:
                     mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
                     
-                    prog_obj = df[mask_obj]['Progresso (%)'].mean()
+                    # AJUSTE: Calcula média ignorando linhas onde KR está vazio (placeholders)
+                    mask_validos = mask_obj & (df['Resultado Chave (KR)'] != '')
+                    if not df[mask_validos].empty:
+                        prog_obj = df[mask_validos]['Progresso (%)'].mean()
+                    else:
+                        prog_obj = 0.0
+
                     if pd.isna(prog_obj): prog_obj = 0.0
                     prog_obj = max(0.0, min(1.0, float(prog_obj)))
                     
@@ -165,7 +172,6 @@ if check_password():
                     
                     with st.expander(label_obj, expanded=True):
                         
-                        # Botão de Excluir Objetivo
                         c_edit_obj, c_del_obj = st.columns([5, 1])
                         with c_edit_obj:
                             new_name = st.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
@@ -181,8 +187,12 @@ if check_password():
                         st.markdown("### Resultados Chave (KRs)")
                         
                         # --- HIERARQUIA 2: KRs ---
+                        # O filtro 'if x' já garante que o KR vazio criado automaticamente não apareça aqui
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
+                        if not krs:
+                            st.caption("Nenhum KR criado ainda. Adicione o primeiro abaixo.")
+
                         for kr in krs:
                             mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
                             df_kr = df[mask_kr] 
@@ -232,7 +242,6 @@ if check_password():
                                     st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], df_edit], ignore_index=True)
                                     
-                                    # Correção do Bug de Ordenação
                                     st.session_state['df_master'] = st.session_state['df_master'].sort_values(
                                         by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
                                     ).reset_index(drop=True)
