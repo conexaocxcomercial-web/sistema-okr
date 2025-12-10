@@ -15,13 +15,11 @@ OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
 # --- 3. FUNÇÕES DE DADOS ---
 
 def carregar_dados_seguro():
-    """Carrega dados, corrige datas e preenche buracos vazios."""
     if not os.path.exists(DATA_FILE):
         return pd.DataFrame(columns=[
             'Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 
             'Status', 'Responsável', 'Prazo', 'Avanço', 'Alvo', 'Progresso (%)'
         ])
-    
     try:
         df = pd.read_csv(DATA_FILE)
         text_cols = ['Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 'Status', 'Responsável']
@@ -56,11 +54,12 @@ def salvar_departamentos(lista_deptos):
     pd.DataFrame(lista_deptos, columns=['Departamento']).to_csv(DEPT_FILE, index=False)
 
 def calcular_progresso(row):
+    """Calcula progresso da linha garantindo limite de 100%."""
     try:
         av = float(row['Avanço'])
         al = float(row['Alvo'])
         if al > 0:
-            return min(av / al, 1.0)
+            return min(max(av / al, 0.0), 1.0)
         return 0.0
     except:
         return 0.0
@@ -73,18 +72,7 @@ def converter_para_excel(df):
         df_exp.to_excel(writer, index=False, sheet_name='OKRs')
     return output.getvalue()
 
-def style_metric_cards():
-    # CSS para dar um visual mais limpo nos cards
-    st.markdown("""
-    <style>
-    div[data-testid="stMetric"] {
-        background-color: #f0f2f6;
-        padding: 10px;
-        border-radius: 5px;
-        text-align: center;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+# Remover a função style_metric_cards pois não usaremos mais st.metric
 
 # --- 4. INICIALIZAÇÃO DA MEMÓRIA ---
 if 'df_master' not in st.session_state:
@@ -110,7 +98,7 @@ def check_password():
 
 # --- 6. APLICAÇÃO PRINCIPAL ---
 if check_password():
-    style_metric_cards() # Aplica CSS
+    # style_metric_cards() # Removido
     st.title("Painel de OKRs")
 
     df = st.session_state['df_master']
@@ -120,7 +108,6 @@ if check_password():
     with st.sidebar:
         st.header("⚙️ Configurações")
         
-        # Gerenciar Deptos
         with st.expander("Departamentos"):
             with st.form("add_dept"):
                 novo = st.text_input("Novo:")
@@ -138,7 +125,6 @@ if check_password():
 
         st.divider()
         
-        # Novo Objetivo
         st.subheader("🚀 Novo Objetivo")
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
@@ -172,13 +158,14 @@ if check_password():
                 objs = [x for x in df_d['Objetivo'].unique() if x]
                 for obj in objs:
                     mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
-                    prog_obj = df[mask_obj]['Progresso (%)'].mean()
                     
-                    # Expander do Objetivo (Visão Macro)
+                    prog_obj = df[mask_obj]['Progresso (%)'].mean()
+                    if pd.isna(prog_obj): prog_obj = 0.0
+                    prog_obj = max(0.0, min(1.0, float(prog_obj)))
+                    
                     label_obj = f"{obj}  |  📊 {int(prog_obj*100)}%"
                     with st.expander(label_obj, expanded=True):
                         
-                        # Edição do Nome do Objetivo
                         col_edit_obj, _ = st.columns([3,1])
                         new_name = col_edit_obj.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}")
                         if new_name != obj:
@@ -187,36 +174,35 @@ if check_password():
 
                         st.markdown("### Resultados Chave (KRs)")
                         
-                        # --- HIERARQUIA 2: KRs (EM CARDS) ---
+                        # --- HIERARQUIA 2: KRs (CARDS MINIMALISTAS) ---
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
                         for kr in krs:
-                            # Filtra dados do KR
                             mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
                             df_kr = df[mask_kr]
-                            prog_kr = df_kr['Progresso (%)'].mean()
                             
-                            # --- O "CARD" VISUAL DO KR ---
+                            prog_kr = df_kr['Progresso (%)'].mean()
+                            if pd.isna(prog_kr): prog_kr = 0.0
+                            prog_kr = max(0.0, min(1.0, float(prog_kr)))
+
+                            # --- LAYOUT MINIMALISTA DO CARD ---
                             with st.container(border=True):
-                                # Cabeçalho do Card
-                                c1, c2, c3 = st.columns([4, 2, 2])
+                                # Usamos apenas 2 colunas agora: Título (Largo) e Barra (Estreito)
+                                c_title, c_bar = st.columns([3, 1])
                                 
-                                with c1:
-                                    # Ícone e Nome do KR (Editável via popover ou direto se preferir)
+                                with c_title:
                                     st.markdown(f"**🗝️ KR:** {kr}")
-                                    # Campo para renomear KR discreto
                                     new_kr = st.text_input("Editar nome do KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
                                     if new_kr != kr:
                                         st.session_state['df_master'].loc[mask_kr, 'Resultado Chave (KR)'] = new_kr
                                         st.rerun()
                                 
-                                with c2:
-                                    st.progress(prog_kr, text="Progresso Geral")
+                                with c_bar:
+                                    # A barra agora mostra a porcentagem no próprio texto
+                                    st.progress(prog_kr, text=f"**{int(prog_kr*100)}%**")
                                 
-                                with c3:
-                                    st.metric("Conclusão", f"{int(prog_kr*100)}%")
+                                # --- FIM DO CABEÇALHO MINIMALISTA ---
 
-                                # Tabela de Tarefas
                                 st.markdown("🔻 **Tarefas & Ações**")
                                 
                                 col_cfg = {
@@ -234,21 +220,18 @@ if check_password():
                                     key=f"t_{depto}_{obj}_{kr}"
                                 )
 
-                                # Salvamento
                                 if not df_edit.equals(df_kr):
                                     df_edit['Progresso (%)'] = df_edit.apply(calcular_progresso, axis=1)
                                     df_edit['Departamento'] = depto
                                     df_edit['Objetivo'] = obj
-                                    df_edit['Resultado Chave (KR)'] = kr # Garante vínculo
+                                    df_edit['Resultado Chave (KR)'] = kr
                                     
-                                    # Atualiza Master
                                     idxs = df_kr.index
                                     st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], df_edit], ignore_index=True)
                                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                     st.rerun()
 
-                        # Botão Adicionar KR
                         st.markdown("")
                         with st.popover("➕ Novo KR neste Objetivo"):
                             nk = st.text_input("Nome do KR", key=f"nk_{obj}")
