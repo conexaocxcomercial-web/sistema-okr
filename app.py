@@ -182,7 +182,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("🔒 Login")
+        st.title("Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
             if senha == "admin123":
@@ -221,7 +221,7 @@ if check_password():
 
         st.divider()
         
-        st.subheader("🚀 Novo Objetivo")
+        st.subheader("Novo Objetivo")
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
             o = st.text_input("Objetivo Macro")
@@ -266,7 +266,7 @@ if check_password():
                     if pd.isna(prog_obj): prog_obj = 0.0
                     prog_obj = max(0.0, min(1.0, float(prog_obj)))
                     
-                    label_obj = f"{obj}  |  📊 {int(prog_obj*100)}%"
+                    label_obj = f"{obj}  |  {int(prog_obj*100)}%"
                     
                     with st.expander(label_obj, expanded=True):
                         
@@ -301,7 +301,7 @@ if check_password():
                                 c_title, c_bar = st.columns([3, 1])
                                 
                                 with c_title:
-                                    st.markdown(f"**🗝️ KR:** {kr}")
+                                    st.markdown(f"**KR:** {kr}")
                                     new_kr = st.text_input("Editar nome do KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
                                     if new_kr != kr:
                                         st.session_state['df_master'].loc[mask_kr, 'Resultado Chave (KR)'] = new_kr
@@ -310,7 +310,7 @@ if check_password():
                                 with c_bar:
                                     st.progress(prog_kr, text=f"**{int(prog_kr*100)}%**")
                                 
-                                st.markdown("🔻 **Tarefas & Ações**")
+                                st.markdown("**Tarefas & Ações**")
                                 
                                 col_cfg = {
                                     "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
@@ -346,7 +346,7 @@ if check_password():
                                     st.rerun()
 
                         st.markdown("")
-                        with st.popover("➕ Novo KR neste Objetivo"):
+                        with st.popover("Novo KR neste Objetivo"):
                             nk = st.text_input("Nome do KR", key=f"nk_{obj}")
                             if st.button("Criar", key=f"bk_{obj}"):
                                 if nk:
@@ -366,10 +366,12 @@ if check_password():
     
     # --- RODAPÉ COM EXPORTAÇÃO ---
     st.markdown("---")
-    with st.expander("📂 Exportar Dados"):
+    with st.expander("Exportar Dados"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
         st.download_button(
-            "📥 Baixar Excel Completo",
+            "Baixar Excel Completo",
             converter_para_excel(st.session_state['df_master']),
             "okrs_imobanco.xlsx"
         )
+
+
