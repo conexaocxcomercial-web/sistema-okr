@@ -7,167 +7,173 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- 2. CSS CUSTOMIZADO (UI/UX PREMIUM) ---
-# Aplicação de design minimalista, clean, white mode corporativo premium.
-# Fonte: Helvetica Now (Fallback: Inter, SF Pro, Helvetica, Arial)
-# Paleta de destaque (moderada): #7371ff (principal), #1e1e1e (texto)
-
-custom_css = """
+# --- CUSTOM CSS INJECTION (PREMIUM UI/UX) ---
+st.markdown("""
 <style>
-/* 1. Global & Font */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    /* IMPORT FONTS */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-html, body, [data-testid="stAppViewContainer"] {
-    background-color: #FFFFFF; /* Fundo branco absoluto */
-    color: #1e1e1e; /* Grafite sofisticado */
-    font-family: "Inter", "SF Pro", "Helvetica Neue", Helvetica, Arial, sans-serif;
-}
+    /* --- GLOBAL RESET & TYPOGRAPHY --- */
+    html, body, [class*="css"] {
+        font-family: 'Helvetica Now', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
+        color: #1e1e1e !important;
+        background-color: #ffffff !important;
+    }
+    
+    /* Remove Header Decoration */
+    header {visibility: hidden;}
+    
+    /* --- SIDEBAR --- */
+    [data-testid="stSidebar"] {
+        background-color: #ffffff !important;
+        border-right: 1px solid #f0f0f0 !important;
+    }
+    [data-testid="stSidebar"] .block-container {
+        padding-top: 2rem;
+    }
+    
+    /* --- HEADINGS --- */
+    h1 {
+        font-weight: 700 !important;
+        letter-spacing: -1px !important;
+        font-size: 2.5rem !important;
+        color: #1e1e1e !important;
+        margin-bottom: 2rem !important;
+    }
+    h2, h3 {
+        font-weight: 600 !important;
+        letter-spacing: -0.5px !important;
+        color: #1e1e1e !important;
+    }
+    
+    /* --- INPUTS & SELECTBOXES --- */
+    .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border: 1px solid #e0e0e0 !important;
+        border-radius: 8px !important;
+        color: #1e1e1e !important;
+        height: 44px !important;
+        box-shadow: none !important;
+        transition: all 0.2s ease;
+    }
+    .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {
+        border-color: #7371ff !important;
+        box-shadow: 0 0 0 3px rgba(115, 113, 255, 0.1) !important;
+    }
+    
+    /* --- BUTTONS (ENTERPRISE STYLE) --- */
+    /* Primary / Form Submit Buttons */
+    div.stButton > button, div.stFormSubmitButton > button {
+        background-color: #1e1e1e !important;
+        color: #ffffff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        padding: 0.6rem 1.2rem !important;
+        font-weight: 500 !important;
+        font-size: 14px !important;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
+        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+        width: 100%;
+    }
+    div.stButton > button:hover, div.stFormSubmitButton > button:hover {
+        background-color: #7371ff !important;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 15px rgba(115, 113, 255, 0.25) !important;
+    }
+    div.stButton > button:active {
+        transform: translateY(0);
+    }
 
-/* 2. Sidebar */
-[data-testid="stSidebar"] {
-    background-color: #FFFFFF; /* Sidebar branca sofisticada */
-    border-right: 1px solid #f0f0f0; /* Linha sutil */
-    box-shadow: 2px 0 5px rgba(0, 0, 0, 0.05); /* Sombra leve */
-}
-[data-testid="stSidebar"] .stButton > button {
-    border-radius: 8px;
-    border: 1px solid #f0f0f0;
-    background-color: #f8f8f8;
-    color: #1e1e1e;
-}
-[data-testid="stSidebar"] .stButton > button:hover {
-    background-color: #e8e8e8;
-    border-color: #e8e8e8;
-}
+    /* --- TABS (PILL/CLEAN STYLE) --- */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
+        border-bottom: 1px solid #f0f0f0 !important;
+        margin-bottom: 2rem;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: transparent !important;
+        border: none !important;
+        color: #9e9e9e !important;
+        font-weight: 600 !important;
+        font-size: 15px !important;
+    }
+    .stTabs [aria-selected="true"] {
+        color: #7371ff !important;
+        border-bottom: 3px solid #7371ff !important;
+    }
 
-/* 3. Containers/Cards (st.container, st.expander) */
-.stContainer, [data-testid="stExpander"] {
-    border-radius: 12px; /* Borda 12px+ */
-    border: 1px solid #f0f0f0;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05); /* Sombra leve */
-    padding: 1rem;
-    margin-bottom: 15px;
-}
+    /* --- EXPANDERS AS CARDS --- */
+    [data-testid="stExpander"] {
+        background-color: #ffffff !important;
+        border: 1px solid #ececec !important;
+        border-radius: 12px !important;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02) !important;
+        margin-bottom: 16px !important;
+        transition: box-shadow 0.3s ease;
+    }
+    [data-testid="stExpander"]:hover {
+        box-shadow: 0 8px 24px rgba(0,0,0,0.04) !important;
+    }
+    .streamlit-expanderHeader {
+        background-color: transparent !important;
+        color: #1e1e1e !important;
+        font-weight: 600 !important;
+        font-size: 16px !important;
+        border-radius: 12px !important;
+    }
+    .streamlit-expanderHeader:hover {
+        color: #7371ff !important;
+    }
 
-/* 4. Inputs (text_input, selectbox, date_input) */
-.stTextInput > div > div > input,
-.stSelectbox > div > div > button,
-.stDateInput > div > div > input {
-    border-radius: 8px;
-    border: 1px solid #e0e0e0; /* Bordas suaves */
-    padding: 10px 15px;
-    color: #1e1e1e;
-}
-.stTextInput > div > div > input:focus,
-.stSelectbox > div > div > button:focus,
-.stDateInput > div > div > input:focus {
-    border-color: #7371ff; /* Foco elegante */
-    box-shadow: 0 0 0 2px rgba(115, 113, 255, 0.2);
-}
+    /* --- PROGRESS BARS --- */
+    .stProgress > div > div > div > div {
+        background: linear-gradient(90deg, #bef533 0%, #7371ff 100%) !important;
+        border-radius: 20px;
+    }
+    .stProgress > div > div {
+        background-color: #f5f5f5 !important;
+        border-radius: 20px;
+        height: 10px !important;
+    }
 
-/* 5. Botões Minimalistas */
-.stButton > button {
-    border-radius: 8px;
-    border: 1px solid #7371ff;
-    background-color: #7371ff;
-    color: white;
-    font-weight: 500;
-    padding: 10px 20px;
-    transition: all 0.2s ease-in-out;
-}
-.stButton > button:hover {
-    background-color: #5a58e0;
-    border-color: #5a58e0;
-    color: white;
-}
-/* Botão de exclusão (lixeira) */
-[data-testid^="stButton"] button[title="Excluir este Objetivo"] {
-    background-color: #f8f8f8;
-    border-color: #f0f0f0;
-    color: #1e1e1e;
-}
-[data-testid^="stButton"] button[title="Excluir este Objetivo"]:hover {
-    background-color: #ff43c0; /* Cor de destaque para ação perigosa */
-    border-color: #ff43c0;
-    color: white;
-}
+    /* --- DATA EDITOR & TABLES --- */
+    [data-testid="stDataEditor"], [data-testid="stDataFrame"] {
+        border: 1px solid #f0f0f0 !important;
+        border-radius: 12px !important;
+        overflow: hidden !important;
+    }
 
-/* 6. Tabs Modernas */
-[data-testid="stTabs"] button {
-    border-radius: 8px 8px 0 0;
-    border: none;
-    background-color: #f8f8f8;
-    color: #1e1e1e;
-    font-weight: 500;
-    padding: 10px 20px;
-    margin-right: 5px;
-}
-[data-testid="stTabs"] button[aria-selected="true"] {
-    background-color: #FFFFFF;
-    border-bottom: 3px solid #7371ff; /* Linha de destaque */
-    color: #7371ff;
-    font-weight: 600;
-}
-
-/* 7. Progress Bar (Elegante) */
-.stProgress > div > div > div > div {
-    background-color: #e0e0e0; /* Fundo cinza suave */
-    border-radius: 4px;
-}
-.stProgress > div > div > div > div > div {
-    background-color: #7371ff; /* Cor de destaque principal */
-    border-radius: 4px;
-}
-
-/* 8. Data Editor (Tabelas) */
-[data-testid="stDataFrame"] {
-    border-radius: 12px;
-    border: 1px solid #f0f0f0;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.03);
-}
-
-/* 9. Títulos e Hierarquia Visual */
-h1 { color: #1e1e1e; font-weight: 700; border-bottom: 1px solid #f0f0f0; padding-bottom: 10px; }
-h2 { color: #1e1e1e; font-weight: 600; }
-h3 { color: #1e1e1e; font-weight: 500; border-left: 4px solid #7371ff; padding-left: 10px; margin-top: 20px; }
-h4 { color: #1e1e1e; font-weight: 400; }
-
-/* Hierarquia de Expander (Objetivo) */
-[data-testid="stExpander"] > div:first-child {
-    background-color: #f8f8f8; /* Fundo leve para o cabeçalho do Objetivo */
-    border-radius: 12px;
-    padding: 15px;
-    font-weight: 600;
-    color: #1e1e1e;
-    border: none;
-}
-[data-testid="stExpander"] > div:first-child:hover {
-    background-color: #f0f0f0;
-}
-
-/* Container KR (Card) */
-.stContainer:has(h4) {
-    background-color: #FFFFFF;
-    border: 1px solid #e0eeef;
-    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04);
-}
-
-/* Ajuste para o texto do progresso no KR */
-.stProgress + div > div > p {
-    font-weight: 600;
-    color: #1e1e1e;
-}
+    /* --- CONTAINERS --- */
+    [data-testid="stContainer"] {
+        border-color: #f0f0f0 !important;
+    }
+    
+    /* --- POPOVER --- */
+    [data-testid="stPopover"] > button {
+        background-color: #ffffff !important;
+        color: #1e1e1e !important;
+        border: 1px solid #e0e0e0 !important;
+    }
+    
+    /* --- ALERTS --- */
+    .stAlert {
+        border-radius: 8px !important;
+        border: none !important;
+        background-color: #f9f9f9 !important;
+        color: #1e1e1e !important;
+    }
 
 </style>
-"""
-st.markdown(custom_css, unsafe_allow_html=True)
+""", unsafe_allow_html=True)
 
-# --- 3. ARQUIVOS E CONSTANTES ---
+# --- 2. ARQUIVOS E CONSTANTES ---
 DATA_FILE = 'okr_base_dados.csv'
 DEPT_FILE = 'config_departamentos.csv'
 OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
 
-# --- 4. FUNÇÕES DE DADOS ---
+# --- 3. FUNÇÕES DE DADOS ---
 
 def carregar_dados_seguro():
     if not os.path.exists(DATA_FILE):
@@ -226,22 +232,21 @@ def converter_para_excel(df):
         df_exp.to_excel(writer, index=False, sheet_name='OKRs')
     return output.getvalue()
 
-# --- 5. INICIALIZAÇÃO DA MEMÓRIA ---
+# --- 4. INICIALIZAÇÃO DA MEMÓRIA ---
 if 'df_master' not in st.session_state:
     st.session_state['df_master'] = carregar_dados_seguro()
 
 if 'password_correct' not in st.session_state:
     st.session_state['password_correct'] = False
 
-# --- 6. TELA DE LOGIN ---
+# --- 5. TELA DE LOGIN ---
 def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
         st.title("Login")
-        st.markdown("---") # Separador visual
-        senha = st.text_input("Senha", type="password", label_visibility="collapsed", placeholder="Digite a senha...")
-        if st.button("Entrar", use_container_width=True):
+        senha = st.text_input("Senha", type="password")
+        if st.button("Entrar"):
             if senha == "admin123":
                 st.session_state["password_correct"] = True
                 st.rerun()
@@ -249,7 +254,7 @@ def check_password():
                 st.error("Senha incorreta")
     return False
 
-# --- 7. APLICAÇÃO PRINCIPAL ---
+# --- 6. APLICAÇÃO PRINCIPAL ---
 if check_password():
     st.title("Painel de OKRs")
 
@@ -262,14 +267,14 @@ if check_password():
         
         with st.expander("Departamentos"):
             with st.form("add_dept"):
-                novo = st.text_input("Novo:", label_visibility="collapsed", placeholder="Nome do novo departamento")
-                if st.form_submit_button("Adicionar", use_container_width=True):
+                novo = st.text_input("Novo:")
+                if st.form_submit_button("Adicionar"):
                     if novo and novo not in lista_deptos:
                         lista_deptos.append(novo)
                         salvar_departamentos(lista_deptos)
                         st.rerun()
-            rm_dept = st.selectbox("Remover:", ["..."] + lista_deptos, label_visibility="collapsed")
-            if st.button("Remover", use_container_width=True):
+            rm_dept = st.selectbox("Remover:", ["..."] + lista_deptos)
+            if st.button("Remover"):
                 if rm_dept != "...":
                     lista_deptos.remove(rm_dept)
                     salvar_departamentos(lista_deptos)
@@ -280,8 +285,8 @@ if check_password():
         st.subheader("Novo Objetivo")
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
-            o = st.text_input("Objetivo Macro", placeholder="Ex: Aumentar a satisfação do cliente")
-            if st.form_submit_button("Criar Objetivo", use_container_width=True):
+            o = st.text_input("Objetivo Macro")
+            if st.form_submit_button("Criar Objetivo"):
                 if o:
                     # AJUSTE: Cria o Objetivo com KR vazio e Tarefa vazia
                     novo_okr = {
@@ -324,7 +329,7 @@ if check_password():
                     if pd.isna(prog_obj): prog_obj = 0.0
                     prog_obj = max(0.0, min(1.0, float(prog_obj)))
                     
-                    label_obj = f"🎯 {obj} | {int(prog_obj*100)}%"
+                    label_obj = f"{obj}  | {int(prog_obj*100)}%"
                     
                     with st.expander(label_obj, expanded=True):
                         
@@ -335,7 +340,7 @@ if check_password():
                                 st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
                                 st.rerun()
                         with c_del_obj:
-                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo", use_container_width=True):
+                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo"):
                                 st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                 st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                 st.rerun()
@@ -376,8 +381,7 @@ if check_password():
                                     "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
                                     "Status": st.column_config.SelectboxColumn(options=OPCOES_STATUS, required=True),
                                     "Prazo": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                                    "Avanço": st.column_config.NumberColumn(format="%.2f"),
-                                    "Alvo": st.column_config.NumberColumn(format="%.2f"),
+                                    "Departamento": None, "Objetivo": None, "Resultado Chave (KR)": None
                                 }
                                 
                                 unique_key = f"edit_{hash(depto + obj + kr)}"
@@ -408,8 +412,8 @@ if check_password():
 
                         st.markdown("")
                         with st.popover("Novo KR"):
-                            nk = st.text_input("Nome do KR", key=f"nk_{obj}", placeholder="Ex: Atingir 95% de NPS")
-                            if st.button("Criar KR", key=f"bk_{obj}", use_container_width=True):
+                            nk = st.text_input("Nome do KR", key=f"nk_{obj}")
+                            if st.button("Criar", key=f"bk_{obj}"):
                                 if nk:
                                     dummy = {
                                         'Departamento': depto, 'Objetivo': obj, 'Resultado Chave (KR)': nk,
