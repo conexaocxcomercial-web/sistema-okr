@@ -7,175 +7,208 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- CSS AVANÇADO (VISUAL PRO) ---
+# --- CSS ENTERPRISE (VISUAL PROFISSIONAL) ---
 st.markdown("""
     <style>
-        /* Importando Fonte Moderna (Poppins) */
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+        /* Importando Fonte Clean e Moderna (Inter - Padrão de UI moderna) */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-        /* Variáveis da Paleta CX Data */
+        /* VARIÁVEIS DO TEMA */
         :root {
-            --cx-lilac: #dbbfff;
-            --cx-neon-green: #bef533;
-            --cx-neon-pink: #ff43c0;
-            --cx-blue-purple: #7371ff;
-            --cx-dark: #1e1e1e;
-            --cx-bg: #fafafa;
-            --cx-card-bg: #ffffff;
+            --primary: #7371ff;       /* Azul/Roxo Principal */
+            --accent: #bef533;        /* Verde Neon para Sucesso */
+            --highlight: #dbbfff;     /* Lilás Suave para fundos */
+            --text-dark: #1e1e1e;     /* Cinza quase preto para texto */
+            --text-light: #6b7280;    /* Cinza médio para descrições */
+            --bg-page: #f3f4f6;       /* Cinza muito claro para o fundo da página */
+            --bg-card: #ffffff;       /* Branco absoluto para cartões */
+            --border-radius: 12px;    /* Arredondamento padrão */
         }
 
-        /* Aplicando a Fonte em Tudo */
+        /* RESET GLOBAL */
         html, body, [class*="css"] {
-            font-family: 'Poppins', sans-serif;
-            color: var(--cx-dark);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-dark);
+            -webkit-font-smoothing: antialiased; /* Texto mais nítido */
         }
 
-        /* Fundo Geral */
+        /* FUNDO DA PÁGINA */
         .stApp {
-            background-color: var(--cx-bg);
+            background-color: var(--bg-page);
         }
 
         /* --- BARRA LATERAL (SIDEBAR) --- */
         section[data-testid="stSidebar"] {
-            background-color: var(--cx-card-bg);
-            border-right: 1px solid rgba(0,0,0,0.05);
-            box-shadow: 4px 0 15px rgba(0,0,0,0.02);
+            background-color: var(--bg-card);
+            border-right: 1px solid rgba(0,0,0,0.04);
+            box-shadow: 2px 0 12px rgba(0,0,0,0.02);
         }
         
-        /* Títulos da Sidebar */
-        section[data-testid="stSidebar"] h1, 
-        section[data-testid="stSidebar"] h2, 
+        /* Títulos na Sidebar */
         section[data-testid="stSidebar"] h3 {
-            color: var(--cx-blue-purple) !important;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: var(--text-light);
+            margin-top: 2rem;
             font-weight: 600;
         }
 
         /* --- OBJETIVOS (EXPANDERS) --- */
-        /* Estilo do cabeçalho do Objetivo fechado/aberto */
+        /* Header do Expander (Onde clica) */
         .streamlit-expanderHeader {
-            background-color: white;
-            border-radius: 12px;
-            border: 1px solid #eee;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
-            transition: all 0.3s ease;
+            background-color: var(--bg-card);
+            border: 1px solid transparent;
+            border-radius: var(--border-radius);
+            padding: 1rem 1.5rem;
+            margin-bottom: 0.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+            transition: all 0.2s ease;
             font-weight: 600;
-            color: var(--cx-blue-purple);
+            color: var(--text-dark);
         }
         .streamlit-expanderHeader:hover {
-            border-color: var(--cx-blue-purple);
-            color: var(--cx-blue-purple);
-            background-color: #fefefe;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+            transform: translateY(-1px);
+            color: var(--primary);
         }
-        /* Corpo do Expander */
+        /* Conteúdo interno do Expander */
         div[data-testid="stExpander"] {
             border: none;
-            background-color: transparent;
+            background: transparent;
+        }
+        div[data-testid="stExpander"] > div[role="group"] {
+            padding-top: 1rem;
         }
 
-        /* --- CARDS DOS KRs (A Mágica Acontece Aqui) --- */
-        /* Container com borda vira um Card Flutuante */
+        /* --- KR CARDS (CARTÕES DE RESULTADO CHAVE) --- */
+        /* O container com borda vira o nosso Card Principal */
         div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"] {
-            border: none !important; /* Remove a borda padrão feia */
-            border-left: 5px solid var(--cx-blue-purple) !important; /* Borda lateral colorida */
-            background-color: white;
-            border-radius: 12px;
+            background-color: var(--bg-card);
+            border: 1px solid rgba(0,0,0,0.05) !important;
+            border-left: 4px solid var(--primary) !important;
+            border-radius: var(--border-radius);
             padding: 1.5rem;
-            margin-bottom: 1rem;
-            
-            /* Sombra Suave */
-            box-shadow: 0 4px 6px rgba(0,0,0,0.04);
-            
-            /* Transição para Animação */
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-
-        /* Efeito Hover (Levitar) */
-        div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"]:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 10px 20px rgba(115, 113, 255, 0.15); /* Sombra roxa suave */
+            margin-bottom: 1.5rem;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
 
         /* Título do KR */
         div[data-testid="stContainer"] p {
-            font-size: 1rem;
-            font-weight: 500;
+            font-size: 0.95rem;
+            color: var(--text-dark);
+            margin-bottom: 0.5rem;
         }
 
-        /* --- BARRA DE PROGRESSO NEON --- */
+        /* --- BARRA DE PROGRESSO "CLEAN" --- */
+        .stProgress {
+            background-color: transparent;
+        }
         .stProgress > div > div > div > div {
-            background: linear-gradient(90deg, var(--cx-neon-green) 0%, #d4ff5e 100%);
+            background: var(--accent); /* Verde Neon */
+            background: linear-gradient(90deg, var(--accent) 0%, #a3d929 100%);
             border-radius: 10px;
-            height: 12px !important;
         }
         .stProgress > div > div > div {
-            background-color: #f0f0f0; /* Fundo da barra vazio */
+            background-color: #e5e7eb; /* Fundo cinza claro da barra */
             border-radius: 10px;
-            height: 12px !important;
+            height: 8px !important; /* Barra mais fina e elegante */
+        }
+        /* Texto da porcentagem */
+        div[data-testid="stProgress"] + div {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 0.9rem;
+        }
+
+        /* --- INPUTS E SELECTBOX (Visual SaaS) --- */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+            background-color: #ffffff;
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            color: var(--text-dark);
+            height: 42px;
+            padding-left: 12px;
+            transition: border 0.2s, box-shadow 0.2s;
+        }
+        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(115, 113, 255, 0.1); /* Glow suave azul */
+            outline: none;
+        }
+        label {
+            font-size: 0.85rem !important;
+            color: var(--text-light) !important;
+            font-weight: 500 !important;
         }
 
         /* --- BOTÕES --- */
-        /* Botão Primário (Adicionar, Salvar) */
+        /* Botão Primário (Solid) */
         button[kind="secondary"] {
-            border: 1px solid var(--cx-blue-purple);
-            color: var(--cx-blue-purple);
+            background-color: white;
+            border: 1px solid #e5e7eb;
+            color: var(--text-dark);
             border-radius: 8px;
             font-weight: 500;
-            transition: all 0.3s;
+            font-size: 0.9rem;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            transition: all 0.2s;
         }
         button[kind="secondary"]:hover {
-            background-color: var(--cx-blue-purple);
-            color: white !important;
-            border-color: var(--cx-blue-purple);
+            border-color: var(--primary);
+            color: var(--primary);
+            background-color: #fcfcfd;
         }
-        /* Botão de Excluir (Lixeira) */
-        button[title="Excluir este Objetivo"] {
-            border-color: #ffcccc !important;
-            color: red !important;
+        
+        /* Botão de Excluir (Ícone) */
+        button[kind="secondary"]:has(div > svg) {
+            border: none;
+            background: transparent;
+            box-shadow: none;
         }
-        button[title="Excluir este Objetivo"]:hover {
-            background-color: red !important;
-            color: white !important;
-        }
-
-        /* --- INPUTS --- */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-            border-radius: 8px;
-            border: 1px solid #e0e0e0;
-            background-color: #f9f9f9;
-        }
-        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
-            border-color: var(--cx-blue-purple);
-            box-shadow: 0 0 0 1px var(--cx-blue-purple);
-            background-color: white;
-        }
-
+        
         /* --- ABAS (TABS) --- */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 10px;
-            border-bottom: none;
+            gap: 24px;
+            border-bottom: 1px solid #e5e7eb;
+            margin-bottom: 24px;
         }
         .stTabs [data-baseweb="tab"] {
-            height: 45px;
-            background-color: white;
-            border-radius: 20px; /* Pílulas arredondadas */
-            border: 1px solid #eee;
-            padding: 0 20px;
+            height: auto;
+            background-color: transparent;
+            border: none;
+            padding: 0 0 12px 0;
             font-weight: 500;
-            color: #888;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            color: var(--text-light);
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
         }
         .stTabs [aria-selected="true"] {
-            background-color: var(--cx-blue-purple) !important;
-            color: white !important;
-            border: none;
-            box-shadow: 0 4px 10px rgba(115, 113, 255, 0.3);
+            color: var(--primary);
+            border-bottom: 2px solid var(--primary);
         }
 
-        /* Ajuste fino para Dataframes */
+        /* --- DATA EDITOR (TABELA) --- */
         div[data-testid="stDataFrame"] {
-            border: 1px solid #eee;
+            border: 1px solid #e5e7eb;
             border-radius: 8px;
             overflow: hidden;
+        }
+        div[data-testid="stDataFrame"] div[data-testid="stHeader"] {
+            background-color: #f9fafb; /* Cabeçalho cinza bem claro */
+            border-bottom: 1px solid #e5e7eb;
+            color: var(--text-dark);
+            font-weight: 600;
+        }
+
+        /* --- TEXTOS AUXILIARES --- */
+        .sub-header {
+            font-size: 0.8rem;
+            color: var(--text-light);
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            letter-spacing: 0.05em;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -257,7 +290,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("🔒 Login")
+        st.title("Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
             if senha == "admin123":
@@ -269,7 +302,8 @@ def check_password():
 
 # --- 6. APLICAÇÃO PRINCIPAL ---
 if check_password():
-    st.title("Painel de OKRs")
+    # Título principal mais limpo (Pode ser removido se o logo na sidebar for suficiente, mas mantive)
+    # st.title("Painel de OKRs") 
 
     df = st.session_state['df_master']
     lista_deptos = carregar_departamentos()
@@ -278,21 +312,22 @@ if check_password():
     with st.sidebar:
         if os.path.exists(LOGO_FILE):
             st.image(LOGO_FILE, use_column_width=True)
+            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True) # Espaço
         else:
-            st.markdown(f"<h2 style='text-align: center; color: #7371ff; font-weight:700;'>CX Data</h2>", unsafe_allow_html=True)
+            st.markdown(f"<h2 style='color: #7371ff; font-weight:700;'>CX Data</h2>", unsafe_allow_html=True)
             
-        st.markdown("### ⚙️ Configurações") # Markdown para usar a fonte nova
+        st.markdown("### CONFIGURAÇÕES")
         
-        with st.expander("Departamentos"):
+        with st.expander("Gerenciar Departamentos"):
             with st.form("add_dept"):
-                novo = st.text_input("Novo:")
+                novo = st.text_input("Novo Departamento")
                 if st.form_submit_button("Adicionar"):
                     if novo and novo not in lista_deptos:
                         lista_deptos.append(novo)
                         salvar_departamentos(lista_deptos)
                         st.rerun()
-            rm_dept = st.selectbox("Remover:", ["..."] + lista_deptos)
-            if st.button("Remover"):
+            rm_dept = st.selectbox("Remover", ["..."] + lista_deptos)
+            if st.button("Remover Selecionado"):
                 if rm_dept != "...":
                     lista_deptos.remove(rm_dept)
                     salvar_departamentos(lista_deptos)
@@ -300,10 +335,11 @@ if check_password():
 
         st.divider()
         
-        st.markdown("### 🚀 Novo Objetivo")
+        st.markdown("### OPERACIONAL")
         with st.form("quick_add"):
+            st.caption("Novo Objetivo Macro")
             d = st.selectbox("Departamento", lista_deptos)
-            o = st.text_input("Objetivo Macro")
+            o = st.text_input("Nome do Objetivo")
             if st.form_submit_button("Criar Objetivo"):
                 if o:
                     novo_okr = {
@@ -315,9 +351,15 @@ if check_password():
                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                     st.rerun()
                 else:
-                    st.warning("Digite um nome para o objetivo.")
+                    st.warning("Preencha o nome.")
 
     # --- ÁREA PRINCIPAL ---
+    # Cabeçalho da página principal
+    c_head_1, c_head_2 = st.columns([3,1])
+    with c_head_1:
+        st.markdown(f"<h2 style='font-weight: 700; color: #1e1e1e;'>Painel de Gestão</h2>", unsafe_allow_html=True)
+        st.caption("Acompanhamento de Objetivos e Resultados Chave")
+    
     if df.empty:
         st.info("Comece criando um Objetivo no menu lateral.")
     else:
@@ -326,9 +368,10 @@ if check_password():
         
         for i, depto in enumerate(depts):
             with abas[i]:
+                st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True) # Espaço
                 df_d = df[df['Departamento'] == depto]
                 if df_d.empty:
-                    st.caption("Sem dados.")
+                    st.info("Nenhum OKR iniciado neste departamento.")
                     continue
                 
                 # --- HIERARQUIA 1: OBJETIVOS ---
@@ -345,28 +388,31 @@ if check_password():
                     if pd.isna(prog_obj): prog_obj = 0.0
                     prog_obj = max(0.0, min(1.0, float(prog_obj)))
                     
-                    label_obj = f"{obj}  |  📊 {int(prog_obj*100)}%"
+                    label_obj = f"{obj}  •  {int(prog_obj*100)}%"
                     
                     with st.expander(label_obj, expanded=True):
                         
-                        c_edit_obj, c_del_obj = st.columns([5, 1])
+                        # Cabeçalho do Objetivo (Edição e Exclusão)
+                        c_edit_obj, c_del_obj = st.columns([6, 1])
                         with c_edit_obj:
-                            new_name = st.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
+                            new_name = st.text_input("Título do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
                             if new_name != obj:
                                 st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
                                 st.rerun()
                         with c_del_obj:
-                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo"):
+                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir Objetivo"):
                                 st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                 st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                 st.rerun()
 
-                        st.markdown("##### 🗝️ Resultados Chave (KRs)")
+                        # --- HIERARQUIA 2: KRs ---
+                        st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
+                        st.markdown("<div class='sub-header'>Resultados Chave (KRs)</div>", unsafe_allow_html=True)
                         
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
                         if not krs:
-                            st.info("Nenhum KR criado ainda. Adicione o primeiro abaixo.")
+                            st.caption("Este objetivo ainda não possui KRs.")
 
                         for kr in krs:
                             mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
@@ -376,21 +422,23 @@ if check_password():
                             if pd.isna(prog_kr): prog_kr = 0.0
                             prog_kr = max(0.0, min(1.0, float(prog_kr)))
 
+                            # CARD DO KR
                             with st.container(border=True):
                                 c_title, c_bar = st.columns([3, 1])
                                 
                                 with c_title:
-                                    # Usando markdown com estilo inline para o título do KR
-                                    st.markdown(f"<span style='font-size:1.1rem; color:#7371ff; font-weight:600;'>{kr}</span>", unsafe_allow_html=True)
-                                    new_kr = st.text_input("Editar nome do KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
+                                    # Título do KR estilizado
+                                    st.markdown(f"<span style='font-size:1rem; font-weight:600; color:#1e1e1e;'>🎯 {kr}</span>", unsafe_allow_html=True)
+                                    new_kr = st.text_input("Editar KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
                                     if new_kr != kr:
                                         st.session_state['df_master'].loc[mask_kr, 'Resultado Chave (KR)'] = new_kr
                                         st.rerun()
                                 
                                 with c_bar:
-                                    st.progress(prog_kr, text=f"**{int(prog_kr*100)}%**")
+                                    # Barra de progresso com texto alinhado
+                                    st.progress(prog_kr, text=f"{int(prog_kr*100)}%")
                                 
-                                st.markdown("<div style='margin-top:10px; font-size:0.9rem; font-weight:500;'>🔻 Tarefas & Ações</div>", unsafe_allow_html=True)
+                                st.markdown("<div style='margin-top:12px; margin-bottom: 4px; font-size:0.75rem; font-weight:600; color:#6b7280; text-transform:uppercase;'>Tarefas & Ações</div>", unsafe_allow_html=True)
                                 
                                 col_cfg = {
                                     "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
@@ -426,9 +474,9 @@ if check_password():
                                     st.rerun()
 
                         st.markdown("")
-                        with st.popover("➕ Novo KR neste Objetivo"):
+                        with st.popover("Adicionar Novo KR"):
                             nk = st.text_input("Nome do KR", key=f"nk_{obj}")
-                            if st.button("Criar", key=f"bk_{obj}"):
+                            if st.button("Criar KR", key=f"bk_{obj}"):
                                 if nk:
                                     dummy = {
                                         'Departamento': depto, 'Objetivo': obj, 'Resultado Chave (KR)': nk,
@@ -446,10 +494,10 @@ if check_password():
     
     # --- RODAPÉ COM EXPORTAÇÃO ---
     st.markdown("---")
-    with st.expander("📂 Exportar Dados"):
+    with st.expander("Central de Exportação"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
         st.download_button(
-            "📥 Baixar Excel Completo",
+            "Baixar Excel Completo",
             converter_para_excel(st.session_state['df_master']),
             "okrs_imobanco.xlsx"
         )
