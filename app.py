@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import date
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="Gestão de OKR", layout="wide")
+st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
 # --- 2. ARQUIVOS E CONSTANTES ---
 DATA_FILE = 'okr_base_dados.csv'
@@ -103,7 +103,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("Login")
+        st.title("🔒 Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
             if senha == "admin123":
@@ -115,7 +115,7 @@ def check_password():
 
 # --- 6. APLICAÇÃO PRINCIPAL ---
 if check_password():
-    st.title("Painel de OKRs")
+    st.title("Painel de OKRs Hierárquico")
 
     # Variáveis de trabalho
     df = st.session_state['df_master']
@@ -127,46 +127,37 @@ if check_password():
 
         # --- A. GERENCIAR DEPARTAMENTOS ---
         with st.expander("Gerenciar Departamentos", expanded=False):
-            st.caption("Adicione ou remova setores da lista.")
-            
             with st.form("form_add_dept", clear_on_submit=True):
                 novo_dept_input = st.text_input("Criar Novo:")
-                enviou = st.form_submit_button("➕ Adicionar Dept")
-                
-                if enviou:
+                if st.form_submit_button("➕ Adicionar Dept"):
                     if novo_dept_input and novo_dept_input not in lista_deptos:
                         lista_deptos.append(novo_dept_input)
                         salvar_departamentos(lista_deptos)
-                        st.success(f"{novo_dept_input} criado!")
                         st.rerun()
-                    elif novo_dept_input in lista_deptos:
-                        st.warning("Já existe!")
-
-            st.divider()
             
-            # Remover
+            st.divider()
             dept_to_remove = st.selectbox("Excluir Dept:", ["Selecione..."] + lista_deptos)
             if st.button("Excluir Selecionado"):
                 if dept_to_remove != "Selecione...":
                     lista_deptos.remove(dept_to_remove)
                     salvar_departamentos(lista_deptos)
-                    st.success("Removido!")
                     st.rerun()
 
         st.divider()
 
-        # --- B. NOVO REGISTRO DE OKR ---
-        st.subheader("Novo Registro")
+        # --- B. NOVO REGISTRO RÁPIDO (Cria o cabeçalho) ---
+        st.subheader("Novo Objetivo")
         with st.form("quick_add", clear_on_submit=True):
+            st.caption("Crie a estrutura inicial, depois adicione as tarefas na tabela.")
             qd_dept = st.selectbox("Departamento", lista_deptos)
             qd_obj = st.text_input("Objetivo")
-            qd_kr = st.text_input("KR (Resultado Chave)")
+            qd_kr = st.text_input("Primeiro KR (Resultado Chave)")
             
-            if st.form_submit_button("Salvar Novo OKR"):
+            if st.form_submit_button("Iniciar OKR"):
                 novo_okr = {
                     'Departamento': qd_dept, 'Objetivo': qd_obj, 'Resultado Chave (KR)': qd_kr,
                     'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
-                    'Prazo': pd.to_datetime(date.today()), 'Tarefa': '', 'Responsável': ''
+                    'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Tarefa Inicial', 'Responsável': ''
                 }
                 st.session_state['df_master'] = pd.concat([df, pd.DataFrame([novo_okr])], ignore_index=True)
                 st.session_state['df_master'].to_csv(DATA_FILE, index=False)
@@ -175,90 +166,129 @@ if check_password():
         st.divider()
         if st.button("Forçar Salvamento Geral"):
             st.session_state['df_master'].to_csv(DATA_FILE, index=False)
-            st.toast("Dados salvos com sucesso!")
+            st.toast("Salvo!", icon="✅")
 
-    # --- VISÃO PRINCIPAL ---
-    
+    # --- VISÃO PRINCIPAL (HIERARQUIA) ---
     if df.empty:
-        st.info("Nenhum OKR cadastrado. Use o menu lateral para criar o primeiro.")
+        st.info("Nenhum OKR cadastrado.")
     else:
         depts_com_dados = [d for d in df['Departamento'].unique() if d and d.strip()]
-        todos_depts_visualizacao = sorted(list(set(depts_com_dados) | set(lista_deptos)))
+        todos_depts = sorted(list(set(depts_com_dados) | set(lista_deptos)))
         
-        abas = st.tabs(todos_depts_visualizacao)
+        abas = st.tabs(todos_depts)
         
-        # Variável para controlar se houve edição
-        houve_edicao = False
-
-        for i, depto in enumerate(todos_depts_visualizacao):
+        for i, depto in enumerate(todos_depts):
             with abas[i]:
+                # 1. Filtra Departamento
                 df_depto = df[df['Departamento'] == depto]
-                
                 if df_depto.empty:
-                    st.caption(f"O departamento '{depto}' existe, mas não tem OKRs cadastrados ainda.")
+                    st.caption("Sem dados neste departamento.")
                     continue
                 
+                # 2. Loop por Objetivo (Nível 1 da Hierarquia)
                 objs_unicos = [o for o in df_depto['Objetivo'].unique() if o and o.strip()]
-
                 for obj in objs_unicos:
+                    # Filtra Objetivo
                     mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
                     df_obj = df[mask_obj]
                     
-                    media = df_obj['Progresso (%)'].mean()
+                    # Progresso do Objetivo (Média dos KRs/Tarefas)
+                    media_obj = df_obj['Progresso (%)'].mean()
                     
-                    with st.expander(f"{obj}", expanded=False):
-                        # Barra desenhada ANTES da edição
-                        st.markdown(barra_progresso_html(media), unsafe_allow_html=True)
+                    with st.expander(f"🎯 {obj}", expanded=False):
+                        st.markdown(barra_progresso_html(media_obj), unsafe_allow_html=True)
                         
-                        c_ren, _ = st.columns([3,1])
-                        novo_nome = c_ren.text_input("Renomear Objetivo", value=obj, key=f"ren_{depto}_{obj}")
-                        if novo_nome != obj:
-                            st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = novo_nome
+                        # Opção de Renomear Objetivo
+                        col_ren_obj, _ = st.columns([3,1])
+                        novo_nome_obj = col_ren_obj.text_input("Editar Nome do Objetivo", value=obj, key=f"ren_o_{depto}_{obj}")
+                        if novo_nome_obj != obj:
+                            st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = novo_nome_obj
                             st.rerun()
+                        
+                        st.divider()
 
-                        col_cfg = {
-                            "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
-                            "Status": st.column_config.SelectboxColumn(options=OPCOES_STATUS, required=True),
-                            "Prazo": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                            "Departamento": None, 
-                            "Objetivo": None
-                        }
+                        # 3. Loop por KRs (Nível 2 da Hierarquia)
+                        krs_unicos = [k for k in df_obj['Resultado Chave (KR)'].unique() if k and k.strip()]
                         
-                        df_editado = st.data_editor(
-                            df_obj,
-                            column_config=col_cfg,
-                            use_container_width=True,
-                            num_rows="dynamic",
-                            key=f"editor_{depto}_{obj}"
-                        )
-                        
-                        # --- CORREÇÃO DE ATUALIZAÇÃO ---
-                        if not df_editado.equals(df_obj):
-                            # 1. Recalcula percentual
-                            df_editado['Progresso (%)'] = df_editado.apply(calcular_progresso, axis=1)
-                            # 2. Garante chaves
-                            df_editado['Departamento'] = depto
-                            df_editado['Objetivo'] = obj
+                        for kr in krs_unicos:
+                            # Filtra KR
+                            mask_kr = (df['Departamento'] == depto) & (df['Objetivo'] == obj) & (df['Resultado Chave (KR)'] == kr)
+                            df_kr = df[mask_kr]
                             
-                            # 3. Atualiza Master
-                            idxs_originais = df_obj.index
-                            st.session_state['df_master'] = st.session_state['df_master'].drop(idxs_originais)
-                            st.session_state['df_master'] = pd.concat(
-                                [st.session_state['df_master'], df_editado], 
-                                ignore_index=True
+                            # Layout do KR
+                            c_kr_title, c_kr_prog = st.columns([4, 1])
+                            with c_kr_title:
+                                st.markdown(f"#### 🗝️ KR: {kr}")
+                            with c_kr_prog:
+                                # Progresso específico deste KR
+                                media_kr = df_kr['Progresso (%)'].mean()
+                                st.caption(f"Progresso do KR: {int(media_kr*100)}%")
+
+                            # Opção de Renomear KR
+                            novo_nome_kr = st.text_input("Editar KR", value=kr, key=f"ren_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
+                            if novo_nome_kr != kr:
+                                st.session_state['df_master'].loc[mask_kr, 'Resultado Chave (KR)'] = novo_nome_kr
+                                st.rerun()
+
+                            # 4. Tabela de Tarefas (Nível 3 da Hierarquia)
+                            # Configuração para esconder colunas repetitivas (Dept, Obj, KR)
+                            col_cfg = {
+                                "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
+                                "Status": st.column_config.SelectboxColumn(options=OPCOES_STATUS, required=True),
+                                "Prazo": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                                "Departamento": None, # Esconde
+                                "Objetivo": None,      # Esconde
+                                "Resultado Chave (KR)": None # Esconde (pois já está no título)
+                            }
+
+                            df_editado_kr = st.data_editor(
+                                df_kr,
+                                column_config=col_cfg,
+                                use_container_width=True,
+                                num_rows="dynamic", # Permite adicionar tarefas
+                                key=f"table_{depto}_{obj}_{kr}"
                             )
-                            
-                            # 4. Salva no Disco
-                            st.session_state['df_master'].to_csv(DATA_FILE, index=False)
-                            
-                            # 5. Mágica do Refresh: Roda o script de novo para atualizar a barra lá em cima
-                            st.rerun()
 
+                            # Lógica de Salvamento Inteligente
+                            if not df_editado_kr.equals(df_kr):
+                                # Recalcula progresso
+                                df_editado_kr['Progresso (%)'] = df_editado_kr.apply(calcular_progresso, axis=1)
+                                
+                                # PREENCHIMENTO AUTOMÁTICO DE CAMPOS OCULTOS
+                                # Se o usuário adicionou uma linha nova, ela vem sem Dept/Obj/KR. Preenchemos agora:
+                                df_editado_kr['Departamento'] = depto
+                                df_editado_kr['Objetivo'] = obj
+                                df_editado_kr['Resultado Chave (KR)'] = kr # Garante que novas tarefas fiquem neste grupo
+                                
+                                # Atualiza o Master DataFrame
+                                idxs_originais = df_kr.index
+                                st.session_state['df_master'] = st.session_state['df_master'].drop(idxs_originais)
+                                st.session_state['df_master'] = pd.concat(
+                                    [st.session_state['df_master'], df_editado_kr], 
+                                    ignore_index=True
+                                )
+                                st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+                                st.rerun()
+                            
+                            st.markdown("---") # Separador visual entre KRs
+
+                        # Botão para Adicionar NOVO KR no mesmo Objetivo
+                        with st.popover("➕ Adicionar Novo KR neste Objetivo"):
+                            novo_kr_nome = st.text_input("Nome do Novo KR", key=f"new_kr_in_{obj}")
+                            if st.button("Criar KR", key=f"btn_new_kr_{obj}"):
+                                if novo_kr_nome:
+                                    # Cria uma linha "dummy" para inaugurar o KR
+                                    nova_linha = {
+                                        'Departamento': depto, 'Objetivo': obj, 'Resultado Chave (KR)': novo_kr_nome,
+                                        'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
+                                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Nova Tarefa', 'Responsável': ''
+                                    }
+                                    st.session_state['df_master'] = pd.concat([st.session_state['df_master'], pd.DataFrame([nova_linha])], ignore_index=True)
+                                    st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+                                    st.rerun()
+
+    # --- RODAPÉ ---
     st.markdown("---")
-    with st.expander("Exportar Dados"):
+    with st.expander("📂 Exportar Dados"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
-        st.download_button(
-            "Baixar Excel Completo",
-            converter_para_excel(st.session_state['df_master']),
-            "okrs_imobanco.xlsx"
-        )
+        st.download_button("Baixar Excel", converter_para_excel(st.session_state['df_master']), "okrs.xlsx")
