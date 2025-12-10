@@ -54,7 +54,6 @@ def salvar_departamentos(lista_deptos):
     pd.DataFrame(lista_deptos, columns=['Departamento']).to_csv(DEPT_FILE, index=False)
 
 def calcular_progresso(row):
-    """Calcula progresso da linha garantindo limite de 100%."""
     try:
         av = float(row['Avanço'])
         al = float(row['Alvo'])
@@ -71,8 +70,6 @@ def converter_para_excel(df):
         df_exp['Prazo'] = df_exp['Prazo'].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else '')
         df_exp.to_excel(writer, index=False, sheet_name='OKRs')
     return output.getvalue()
-
-# Remover a função style_metric_cards pois não usaremos mais st.metric
 
 # --- 4. INICIALIZAÇÃO DA MEMÓRIA ---
 if 'df_master' not in st.session_state:
@@ -98,7 +95,6 @@ def check_password():
 
 # --- 6. APLICAÇÃO PRINCIPAL ---
 if check_password():
-    # style_metric_cards() # Removido
     st.title("Painel de OKRs")
 
     df = st.session_state['df_master']
@@ -129,16 +125,19 @@ if check_password():
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
             o = st.text_input("Objetivo Macro")
-            k = st.text_input("1º Resultado Chave (KR)")
-            if st.form_submit_button("Criar Estrutura"):
-                novo_okr = {
-                    'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': k,
-                    'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
-                    'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Planejamento Inicial', 'Responsável': ''
-                }
-                st.session_state['df_master'] = pd.concat([df, pd.DataFrame([novo_okr])], ignore_index=True)
-                st.session_state['df_master'].to_csv(DATA_FILE, index=False)
-                st.rerun()
+            # AJUSTE 1: Removido input de KR. Criação simplificada.
+            if st.form_submit_button("Criar Objetivo"):
+                if o:
+                    novo_okr = {
+                        'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': 'KR Inicial',
+                        'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
+                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Planejamento', 'Responsável': ''
+                    }
+                    st.session_state['df_master'] = pd.concat([df, pd.DataFrame([novo_okr])], ignore_index=True)
+                    st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+                    st.rerun()
+                else:
+                    st.warning("Digite um nome para o objetivo.")
 
     # --- ÁREA PRINCIPAL ---
     if df.empty:
@@ -164,13 +163,21 @@ if check_password():
                     prog_obj = max(0.0, min(1.0, float(prog_obj)))
                     
                     label_obj = f"{obj}  |  📊 {int(prog_obj*100)}%"
+                    
                     with st.expander(label_obj, expanded=True):
                         
-                        col_edit_obj, _ = st.columns([3,1])
-                        new_name = col_edit_obj.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}")
-                        if new_name != obj:
-                            st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
-                            st.rerun()
+                        # AJUSTE 3: Botão de Excluir Objetivo
+                        c_edit_obj, c_del_obj = st.columns([5, 1])
+                        with c_edit_obj:
+                            new_name = st.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
+                            if new_name != obj:
+                                st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
+                                st.rerun()
+                        with c_del_obj:
+                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo e todos seus KRs"):
+                                st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
+                                st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+                                st.rerun()
 
                         st.markdown("### Resultados Chave (KRs)")
                         
@@ -179,15 +186,13 @@ if check_password():
                         
                         for kr in krs:
                             mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
-                            df_kr = df[mask_kr]
+                            df_kr = df[mask_kr]  # Pegamos a cópia para visualização
                             
                             prog_kr = df_kr['Progresso (%)'].mean()
                             if pd.isna(prog_kr): prog_kr = 0.0
                             prog_kr = max(0.0, min(1.0, float(prog_kr)))
 
-                            # --- LAYOUT MINIMALISTA DO CARD ---
                             with st.container(border=True):
-                                # Usamos apenas 2 colunas agora: Título (Largo) e Barra (Estreito)
                                 c_title, c_bar = st.columns([3, 1])
                                 
                                 with c_title:
@@ -198,11 +203,8 @@ if check_password():
                                         st.rerun()
                                 
                                 with c_bar:
-                                    # A barra agora mostra a porcentagem no próprio texto
                                     st.progress(prog_kr, text=f"**{int(prog_kr*100)}%**")
                                 
-                                # --- FIM DO CABEÇALHO MINIMALISTA ---
-
                                 st.markdown("🔻 **Tarefas & Ações**")
                                 
                                 col_cfg = {
@@ -212,12 +214,14 @@ if check_password():
                                     "Departamento": None, "Objetivo": None, "Resultado Chave (KR)": None
                                 }
                                 
+                                # AJUSTE 2: Key com hash para evitar colisão de ID e BUG de edição
+                                unique_key = f"edit_{hash(depto + obj + kr)}"
                                 df_edit = st.data_editor(
                                     df_kr, 
                                     column_config=col_cfg, 
                                     use_container_width=True, 
                                     num_rows="dynamic",
-                                    key=f"t_{depto}_{obj}_{kr}"
+                                    key=unique_key
                                 )
 
                                 if not df_edit.equals(df_kr):
@@ -226,9 +230,16 @@ if check_password():
                                     df_edit['Objetivo'] = obj
                                     df_edit['Resultado Chave (KR)'] = kr
                                     
+                                    # Lógica de atualização segura
                                     idxs = df_kr.index
                                     st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], df_edit], ignore_index=True)
+                                    
+                                    # AJUSTE 2 (Parte B): Ordenar para evitar que linhas pulem de lugar (Causa raiz do bug)
+                                    st.session_state['df_master'] = st.session_state['df_master'].sort_values(
+                                        by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
+                                    ).reset_index(drop=True)
+                                    
                                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                     st.rerun()
 
@@ -240,8 +251,13 @@ if check_password():
                                     dummy = {
                                         'Departamento': depto, 'Objetivo': obj, 'Resultado Chave (KR)': nk,
                                         'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
-                                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Definir Tarefa', 'Responsável': ''
+                                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Nova Tarefa', 'Responsável': ''
                                     }
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], pd.DataFrame([dummy])], ignore_index=True)
+                                    # Ordena também na criação para manter consistência
+                                    st.session_state['df_master'] = st.session_state['df_master'].sort_values(
+                                        by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
+                                    ).reset_index(drop=True)
+                                    
                                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                     st.rerun()
