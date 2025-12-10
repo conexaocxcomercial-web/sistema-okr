@@ -7,10 +7,184 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
+# --- CSS AVANÇADO (VISUAL PRO) ---
+st.markdown("""
+    <style>
+        /* Importando Fonte Moderna (Poppins) */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+        /* Variáveis da Paleta CX Data */
+        :root {
+            --cx-lilac: #dbbfff;
+            --cx-neon-green: #bef533;
+            --cx-neon-pink: #ff43c0;
+            --cx-blue-purple: #7371ff;
+            --cx-dark: #1e1e1e;
+            --cx-bg: #fafafa;
+            --cx-card-bg: #ffffff;
+        }
+
+        /* Aplicando a Fonte em Tudo */
+        html, body, [class*="css"] {
+            font-family: 'Poppins', sans-serif;
+            color: var(--cx-dark);
+        }
+
+        /* Fundo Geral */
+        .stApp {
+            background-color: var(--cx-bg);
+        }
+
+        /* --- BARRA LATERAL (SIDEBAR) --- */
+        section[data-testid="stSidebar"] {
+            background-color: var(--cx-card-bg);
+            border-right: 1px solid rgba(0,0,0,0.05);
+            box-shadow: 4px 0 15px rgba(0,0,0,0.02);
+        }
+        
+        /* Títulos da Sidebar */
+        section[data-testid="stSidebar"] h1, 
+        section[data-testid="stSidebar"] h2, 
+        section[data-testid="stSidebar"] h3 {
+            color: var(--cx-blue-purple) !important;
+            font-weight: 600;
+        }
+
+        /* --- OBJETIVOS (EXPANDERS) --- */
+        /* Estilo do cabeçalho do Objetivo fechado/aberto */
+        .streamlit-expanderHeader {
+            background-color: white;
+            border-radius: 12px;
+            border: 1px solid #eee;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.03);
+            transition: all 0.3s ease;
+            font-weight: 600;
+            color: var(--cx-blue-purple);
+        }
+        .streamlit-expanderHeader:hover {
+            border-color: var(--cx-blue-purple);
+            color: var(--cx-blue-purple);
+            background-color: #fefefe;
+        }
+        /* Corpo do Expander */
+        div[data-testid="stExpander"] {
+            border: none;
+            background-color: transparent;
+        }
+
+        /* --- CARDS DOS KRs (A Mágica Acontece Aqui) --- */
+        /* Container com borda vira um Card Flutuante */
+        div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"] {
+            border: none !important; /* Remove a borda padrão feia */
+            border-left: 5px solid var(--cx-blue-purple) !important; /* Borda lateral colorida */
+            background-color: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            
+            /* Sombra Suave */
+            box-shadow: 0 4px 6px rgba(0,0,0,0.04);
+            
+            /* Transição para Animação */
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+
+        /* Efeito Hover (Levitar) */
+        div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"]:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(115, 113, 255, 0.15); /* Sombra roxa suave */
+        }
+
+        /* Título do KR */
+        div[data-testid="stContainer"] p {
+            font-size: 1rem;
+            font-weight: 500;
+        }
+
+        /* --- BARRA DE PROGRESSO NEON --- */
+        .stProgress > div > div > div > div {
+            background: linear-gradient(90deg, var(--cx-neon-green) 0%, #d4ff5e 100%);
+            border-radius: 10px;
+            height: 12px !important;
+        }
+        .stProgress > div > div > div {
+            background-color: #f0f0f0; /* Fundo da barra vazio */
+            border-radius: 10px;
+            height: 12px !important;
+        }
+
+        /* --- BOTÕES --- */
+        /* Botão Primário (Adicionar, Salvar) */
+        button[kind="secondary"] {
+            border: 1px solid var(--cx-blue-purple);
+            color: var(--cx-blue-purple);
+            border-radius: 8px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+        button[kind="secondary"]:hover {
+            background-color: var(--cx-blue-purple);
+            color: white !important;
+            border-color: var(--cx-blue-purple);
+        }
+        /* Botão de Excluir (Lixeira) */
+        button[title="Excluir este Objetivo"] {
+            border-color: #ffcccc !important;
+            color: red !important;
+        }
+        button[title="Excluir este Objetivo"]:hover {
+            background-color: red !important;
+            color: white !important;
+        }
+
+        /* --- INPUTS --- */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            background-color: #f9f9f9;
+        }
+        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
+            border-color: var(--cx-blue-purple);
+            box-shadow: 0 0 0 1px var(--cx-blue-purple);
+            background-color: white;
+        }
+
+        /* --- ABAS (TABS) --- */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 10px;
+            border-bottom: none;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 45px;
+            background-color: white;
+            border-radius: 20px; /* Pílulas arredondadas */
+            border: 1px solid #eee;
+            padding: 0 20px;
+            font-weight: 500;
+            color: #888;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: var(--cx-blue-purple) !important;
+            color: white !important;
+            border: none;
+            box-shadow: 0 4px 10px rgba(115, 113, 255, 0.3);
+        }
+
+        /* Ajuste fino para Dataframes */
+        div[data-testid="stDataFrame"] {
+            border: 1px solid #eee;
+            border-radius: 8px;
+            overflow: hidden;
+        }
+    </style>
+""", unsafe_allow_html=True)
+
 # --- 2. ARQUIVOS E CONSTANTES ---
 DATA_FILE = 'okr_base_dados.csv'
 DEPT_FILE = 'config_departamentos.csv'
 OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
+LOGO_FILE = "cx_CXdata_LOGO-positiva.png" 
 
 # --- 3. FUNÇÕES DE DADOS ---
 
@@ -83,7 +257,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("Login")
+        st.title("🔒 Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
             if senha == "admin123":
@@ -102,7 +276,12 @@ if check_password():
 
     # --- MENU LATERAL ---
     with st.sidebar:
-        st.header("Configurações")
+        if os.path.exists(LOGO_FILE):
+            st.image(LOGO_FILE, use_column_width=True)
+        else:
+            st.markdown(f"<h2 style='text-align: center; color: #7371ff; font-weight:700;'>CX Data</h2>", unsafe_allow_html=True)
+            
+        st.markdown("### ⚙️ Configurações") # Markdown para usar a fonte nova
         
         with st.expander("Departamentos"):
             with st.form("add_dept"):
@@ -121,13 +300,12 @@ if check_password():
 
         st.divider()
         
-        st.subheader("Novo Objetivo")
+        st.markdown("### 🚀 Novo Objetivo")
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
             o = st.text_input("Objetivo Macro")
             if st.form_submit_button("Criar Objetivo"):
                 if o:
-                    # AJUSTE: Cria o Objetivo com KR vazio e Tarefa vazia
                     novo_okr = {
                         'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': '',
                         'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
@@ -158,7 +336,6 @@ if check_password():
                 for obj in objs:
                     mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
                     
-                    # AJUSTE: Calcula média ignorando linhas onde KR está vazio (placeholders)
                     mask_validos = mask_obj & (df['Resultado Chave (KR)'] != '')
                     if not df[mask_validos].empty:
                         prog_obj = df[mask_validos]['Progresso (%)'].mean()
@@ -168,7 +345,7 @@ if check_password():
                     if pd.isna(prog_obj): prog_obj = 0.0
                     prog_obj = max(0.0, min(1.0, float(prog_obj)))
                     
-                    label_obj = f"{obj}  | {int(prog_obj*100)}%"
+                    label_obj = f"{obj}  |  📊 {int(prog_obj*100)}%"
                     
                     with st.expander(label_obj, expanded=True):
                         
@@ -179,19 +356,17 @@ if check_password():
                                 st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
                                 st.rerun()
                         with c_del_obj:
-                            if st.button("x", key=f"del_{depto}_{obj}", help="Excluir este Objetivo"):
+                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo"):
                                 st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                 st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                 st.rerun()
 
-                        st.markdown("### Resultados Chave (KRs)")
+                        st.markdown("##### 🗝️ Resultados Chave (KRs)")
                         
-                        # --- HIERARQUIA 2: KRs ---
-                        # O filtro 'if x' já garante que o KR vazio criado automaticamente não apareça aqui
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
                         if not krs:
-                            st.caption("Nenhum KR criado ainda. Adicione o primeiro abaixo.")
+                            st.info("Nenhum KR criado ainda. Adicione o primeiro abaixo.")
 
                         for kr in krs:
                             mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
@@ -205,7 +380,8 @@ if check_password():
                                 c_title, c_bar = st.columns([3, 1])
                                 
                                 with c_title:
-                                    st.markdown(f"**KR:** {kr}")
+                                    # Usando markdown com estilo inline para o título do KR
+                                    st.markdown(f"<span style='font-size:1.1rem; color:#7371ff; font-weight:600;'>{kr}</span>", unsafe_allow_html=True)
                                     new_kr = st.text_input("Editar nome do KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
                                     if new_kr != kr:
                                         st.session_state['df_master'].loc[mask_kr, 'Resultado Chave (KR)'] = new_kr
@@ -214,7 +390,7 @@ if check_password():
                                 with c_bar:
                                     st.progress(prog_kr, text=f"**{int(prog_kr*100)}%**")
                                 
-                                st.markdown("**Tarefas & Ações**")
+                                st.markdown("<div style='margin-top:10px; font-size:0.9rem; font-weight:500;'>🔻 Tarefas & Ações</div>", unsafe_allow_html=True)
                                 
                                 col_cfg = {
                                     "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
@@ -250,7 +426,7 @@ if check_password():
                                     st.rerun()
 
                         st.markdown("")
-                        with st.popover("Novo KR"):
+                        with st.popover("➕ Novo KR neste Objetivo"):
                             nk = st.text_input("Nome do KR", key=f"nk_{obj}")
                             if st.button("Criar", key=f"bk_{obj}"):
                                 if nk:
@@ -270,10 +446,10 @@ if check_password():
     
     # --- RODAPÉ COM EXPORTAÇÃO ---
     st.markdown("---")
-    with st.expander("Exportar Dados"):
+    with st.expander("📂 Exportar Dados"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
         st.download_button(
-            "Baixar Excel Completo",
+            "📥 Baixar Excel Completo",
             converter_para_excel(st.session_state['df_master']),
             "okrs_imobanco.xlsx"
         )
