@@ -7,7 +7,7 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- CUSTOM CSS INJECTION (PREMIUM UI/UX) ---
+# --- CSS INJECTION FOR PREMIUM CORPORATE UI ---
 st.markdown("""
 <style>
     /* IMPORT FONTS */
@@ -20,149 +20,159 @@ st.markdown("""
         background-color: #ffffff !important;
     }
     
-    /* Remove Header Decoration */
+    /* Remove default Streamlit header decoration */
     header {visibility: hidden;}
-    
-    /* --- SIDEBAR --- */
+    [data-testid="stToolbar"] {visibility: hidden;}
+
+    /* --- SIDEBAR REFINEMENT --- */
     [data-testid="stSidebar"] {
-        background-color: #ffffff !important;
+        background-color: #fcfcfc !important;
         border-right: 1px solid #f0f0f0 !important;
     }
-    [data-testid="stSidebar"] .block-container {
+    [data-testid="stSidebarUserContent"] {
         padding-top: 2rem;
     }
     
     /* --- HEADINGS --- */
     h1 {
         font-weight: 700 !important;
-        letter-spacing: -1px !important;
-        font-size: 2.5rem !important;
-        color: #1e1e1e !important;
-        margin-bottom: 2rem !important;
+        letter-spacing: -0.03em !important;
+        font-size: 2rem !important;
+        color: #111 !important;
+        margin-bottom: 1.5rem !important;
     }
     h2, h3 {
         font-weight: 600 !important;
-        letter-spacing: -0.5px !important;
-        color: #1e1e1e !important;
+        letter-spacing: -0.02em !important;
+        color: #333 !important;
     }
-    
-    /* --- INPUTS & SELECTBOXES --- */
+
+    /* --- INPUTS & FORMS --- */
     .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
         background-color: #ffffff !important;
-        border: 1px solid #e0e0e0 !important;
+        border: 1px solid #e5e5e5 !important;
         border-radius: 8px !important;
-        color: #1e1e1e !important;
-        height: 44px !important;
+        color: #333 !important;
+        padding: 0.5rem 0.8rem !important;
         box-shadow: none !important;
         transition: all 0.2s ease;
     }
     .stTextInput input:focus, .stSelectbox div[data-baseweb="select"] > div:focus-within {
-        border-color: #7371ff !important;
-        box-shadow: 0 0 0 3px rgba(115, 113, 255, 0.1) !important;
+        border-color: #1e1e1e !important;
+        box-shadow: 0 0 0 2px rgba(30,30,30,0.1) !important;
     }
-    
-    /* --- BUTTONS (ENTERPRISE STYLE) --- */
-    /* Primary / Form Submit Buttons */
+
+    /* --- BUTTONS (PREMIUM STYLE) --- */
+    /* Primary Action Buttons */
     div.stButton > button, div.stFormSubmitButton > button {
         background-color: #1e1e1e !important;
         color: #ffffff !important;
         border: none !important;
-        border-radius: 8px !important;
+        border-radius: 6px !important;
         padding: 0.6rem 1.2rem !important;
         font-weight: 500 !important;
-        font-size: 14px !important;
-        box-shadow: 0 4px 6px rgba(0,0,0,0.05) !important;
-        transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1) !important;
+        font-size: 0.9rem !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.1) !important;
+        transition: transform 0.1s ease, box-shadow 0.1s ease !important;
         width: 100%;
     }
     div.stButton > button:hover, div.stFormSubmitButton > button:hover {
-        background-color: #7371ff !important;
-        transform: translateY(-2px);
-        box-shadow: 0 8px 15px rgba(115, 113, 255, 0.25) !important;
+        background-color: #333333 !important;
+        transform: translateY(-1px);
+        box-shadow: 0 4px 8px rgba(0,0,0,0.15) !important;
     }
     div.stButton > button:active {
         transform: translateY(0);
     }
+    
+    /* Small Utility Buttons (like Delete/Edit icons) */
+    div.stButton > button[kind="secondary"] {
+        background-color: transparent !important;
+        color: #666 !important;
+        box-shadow: none !important;
+        border: 1px solid #eee !important;
+    }
 
-    /* --- TABS (PILL/CLEAN STYLE) --- */
+    /* --- TABS --- */
     .stTabs [data-baseweb="tab-list"] {
         gap: 24px;
-        border-bottom: 1px solid #f0f0f0 !important;
-        margin-bottom: 2rem;
+        border-bottom: 1px solid #f0f0f0;
+        margin-bottom: 1.5rem;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
+        height: 48px;
         white-space: pre-wrap;
         background-color: transparent !important;
         border: none !important;
-        color: #9e9e9e !important;
-        font-weight: 600 !important;
-        font-size: 15px !important;
+        color: #999 !important;
+        font-weight: 500 !important;
+        font-size: 0.95rem !important;
     }
     .stTabs [aria-selected="true"] {
-        color: #7371ff !important;
-        border-bottom: 3px solid #7371ff !important;
-    }
-
-    /* --- EXPANDERS AS CARDS --- */
-    [data-testid="stExpander"] {
-        background-color: #ffffff !important;
-        border: 1px solid #ececec !important;
-        border-radius: 12px !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.02) !important;
-        margin-bottom: 16px !important;
-        transition: box-shadow 0.3s ease;
-    }
-    [data-testid="stExpander"]:hover {
-        box-shadow: 0 8px 24px rgba(0,0,0,0.04) !important;
-    }
-    .streamlit-expanderHeader {
-        background-color: transparent !important;
         color: #1e1e1e !important;
         font-weight: 600 !important;
-        font-size: 16px !important;
-        border-radius: 12px !important;
+        border-bottom: 2px solid #1e1e1e !important;
+    }
+
+    /* --- EXPANDERS (OBJECTIVES) --- */
+    .streamlit-expanderHeader {
+        background-color: #ffffff !important;
+        border: 1px solid #f0f0f0 !important;
+        border-radius: 8px !important;
+        color: #1e1e1e !important;
+        font-weight: 600 !important;
+        font-size: 1.05rem !important;
+        transition: all 0.2s;
     }
     .streamlit-expanderHeader:hover {
-        color: #7371ff !important;
+        border-color: #e0e0e0 !important;
+        background-color: #fafafa !important;
+    }
+    [data-testid="stExpander"] {
+        border: none !important;
+        box-shadow: none !important;
+        margin-bottom: 1rem;
+    }
+    [data-testid="stExpanderDetails"] {
+        border-left: 1px solid #f0f0f0;
+        border-right: 1px solid #f0f0f0;
+        border-bottom: 1px solid #f0f0f0;
+        border-bottom-left-radius: 8px;
+        border-bottom-right-radius: 8px;
+        padding: 1.5rem !important;
+    }
+
+    /* --- CARDS (KRs) --- */
+    [data-testid="stVerticalBlockBorderWrapper"] {
+        border: 1px solid #f0f0f0 !important;
+        border-radius: 12px !important;
+        background-color: #ffffff !important;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03) !important;
+        padding: 1.5rem !important;
+        margin-bottom: 1.5rem !important;
     }
 
     /* --- PROGRESS BARS --- */
     .stProgress > div > div > div > div {
-        background: linear-gradient(90deg, #bef533 0%, #7371ff 100%) !important;
-        border-radius: 20px;
+        background-color: #1e1e1e !important;
     }
     .stProgress > div > div {
-        background-color: #f5f5f5 !important;
-        border-radius: 20px;
-        height: 10px !important;
+        background-color: #f0f0f0 !important;
+        height: 8px !important;
+        border-radius: 4px !important;
     }
 
-    /* --- DATA EDITOR & TABLES --- */
-    [data-testid="stDataEditor"], [data-testid="stDataFrame"] {
+    /* --- DATA EDITOR --- */
+    [data-testid="stDataEditor"] {
         border: 1px solid #f0f0f0 !important;
-        border-radius: 12px !important;
-        overflow: hidden !important;
-    }
-
-    /* --- CONTAINERS --- */
-    [data-testid="stContainer"] {
-        border-color: #f0f0f0 !important;
+        border-radius: 8px !important;
     }
     
     /* --- POPOVER --- */
-    [data-testid="stPopover"] > button {
-        background-color: #ffffff !important;
+    [data-testid="stPopover"] button {
+        background-color: white !important;
         color: #1e1e1e !important;
         border: 1px solid #e0e0e0 !important;
-    }
-    
-    /* --- ALERTS --- */
-    .stAlert {
-        border-radius: 8px !important;
-        border: none !important;
-        background-color: #f9f9f9 !important;
-        color: #1e1e1e !important;
     }
 
 </style>
@@ -244,6 +254,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
+        st.markdown("<br><br>", unsafe_allow_html=True)
         st.title("Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
