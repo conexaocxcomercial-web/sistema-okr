@@ -126,7 +126,7 @@ if check_password():
         st.title("Menu")
 
         # --- A. GERENCIAR DEPARTAMENTOS ---
-        with st.expander("🏢 Gerenciar Departamentos", expanded=False):
+        with st.expander("Gerenciar Departamentos", expanded=False):
             st.caption("Adicione ou remova setores da lista.")
             
             with st.form("form_add_dept", clear_on_submit=True):
@@ -146,7 +146,7 @@ if check_password():
             
             # Remover
             dept_to_remove = st.selectbox("Excluir Dept:", ["Selecione..."] + lista_deptos)
-            if st.button("🗑️ Excluir Selecionado"):
+            if st.button("Excluir Selecionado"):
                 if dept_to_remove != "Selecione...":
                     lista_deptos.remove(dept_to_remove)
                     salvar_departamentos(lista_deptos)
@@ -156,7 +156,7 @@ if check_password():
         st.divider()
 
         # --- B. NOVO REGISTRO DE OKR ---
-        st.subheader("📝 Novo Registro")
+        st.subheader("Novo Registro")
         with st.form("quick_add", clear_on_submit=True):
             qd_dept = st.selectbox("Departamento", lista_deptos)
             qd_obj = st.text_input("Objetivo")
@@ -173,7 +173,7 @@ if check_password():
                 st.rerun()
 
         st.divider()
-        if st.button("💾 Forçar Salvamento Geral"):
+        if st.button("Forçar Salvamento Geral"):
             st.session_state['df_master'].to_csv(DATA_FILE, index=False)
             st.toast("Dados salvos com sucesso!", icon="✅")
 
@@ -258,8 +258,7 @@ if check_password():
     with st.expander("📂 Exportar Dados"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
         st.download_button(
-            "📥 Baixar Excel Completo",
+            "Baixar Excel Completo",
             converter_para_excel(st.session_state['df_master']),
             "okrs_imobanco.xlsx"
         )
-        
