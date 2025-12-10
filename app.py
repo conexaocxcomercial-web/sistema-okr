@@ -5,9 +5,14 @@ from io import BytesIO
 from datetime import date
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
+st.set_page_config(
+    page_title="Gestão de OKR", 
+    layout="wide", 
+    page_icon="🎯",
+    initial_sidebar_state="expanded"
+)
 
-# --- CSS ENTERPRISE (VISUAL SÓBRIO - SEM LARANJA) ---
+# --- CSS ENTERPRISE (LIMPO E HARMONIOSO) ---
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
@@ -17,114 +22,93 @@ st.markdown("""
             --accent: #bef533;        
             --text-dark: #1e1e1e;
             --text-light: #6b7280;
-            --bg-page: #f3f4f6;
+            --bg-page: #f8f9fa;
             --bg-card: #ffffff;
-            --border-radius: 12px;
-            --focus-border: #000000;  /* PRETO PURO PARA O FOCO */
+            --border-radius: 10px;
         }
 
+        /* Fonte Global */
         html, body, [class*="css"] {
             font-family: 'Inter', sans-serif;
             color: var(--text-dark);
             -webkit-font-smoothing: antialiased;
         }
 
+        /* Fundo da Página */
         .stApp {
             background-color: var(--bg-page);
         }
 
-        /* --- REMOÇÃO AGRESSIVA DO DESTAQUE LARANJA/PADRÃO --- */
-        /* Isso força o input a ficar preto/cinza quando selecionado */
-        .stTextInput > div > div > input:focus {
-            border-color: var(--focus-border) !important;
-            box-shadow: none !important; /* Remove o brilho laranja */
+        /* --- TEMA DOS INPUTS (Nativo com leve toque da marca) --- */
+        /* Removemos as bordas pretas forçadas. Deixamos o Streamlit gerenciar, 
+           mas ajustamos a cor de foco para o Azul da Marca (Primary) se possível */
+        
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
+            border-radius: 8px;
         }
         
-        /* Para o Selectbox (Dropdown) */
-        .stSelectbox > div > div[data-baseweb="select"] > div:focus-within {
-            border-color: var(--focus-border) !important;
-            box-shadow: none !important;
+        /* Ajuste fino para o foco ficar na cor da marca (Azul) e não laranja */
+        .stTextInput input:focus {
+            border-color: var(--primary) !important;
+            box-shadow: 0 0 0 1px var(--primary) !important;
         }
-        
-        /* Remove a borda vermelha/laranja que aparece as vezes no hover */
-        .stTextInput > div > div > input:hover,
-        .stSelectbox > div > div[data-baseweb="select"] > div:hover {
-            border-color: #333333 !important;
+        .stSelectbox div[data-baseweb="select"] > div:focus-within {
+            border-color: var(--primary) !important;
+            box-shadow: 0 0 0 1px var(--primary) !important;
         }
 
         /* --- BARRA LATERAL --- */
         section[data-testid="stSidebar"] {
             background-color: var(--bg-card);
-            border-right: 1px solid rgba(0,0,0,0.04);
-            box-shadow: 2px 0 12px rgba(0,0,0,0.02);
+            border-right: 1px solid rgba(0,0,0,0.05);
         }
         
         section[data-testid="stSidebar"] h3 {
-            font-size: 0.85rem;
+            font-size: 0.8rem;
             text-transform: uppercase;
             letter-spacing: 0.05em;
             color: var(--text-light);
-            margin-top: 2rem;
+            margin-top: 1.5rem;
             font-weight: 600;
         }
 
         /* --- ABAS (DEPARTAMENTOS) --- */
         .stTabs [data-baseweb="tab-list"] {
             gap: 20px;
-            border-bottom: none !important;
-            margin-bottom: 20px;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 24px;
         }
         .stTabs [data-baseweb="tab"] {
             height: auto;
             background-color: transparent;
-            border: none !important;
-            padding: 8px 16px;
+            border: none;
+            padding: 8px 0px; /* Sem padding lateral para ficar só o texto */
+            margin-right: 15px;
             font-weight: 500;
             color: var(--text-light);
-            border-radius: 6px;
-            transition: all 0.2s;
+            border-bottom: 2px solid transparent;
+            border-radius: 0;
         }
         .stTabs [aria-selected="true"] {
-            color: #000000 !important;
-            font-weight: 800 !important;
-            background-color: transparent !important;
-            border-bottom: 3px solid #000000 !important;
-            border-radius: 0px;
-        }
-        .stTabs [data-baseweb="tab"] > div:first-child {
-            background-color: transparent !important; 
-        }
-
-        /* --- INPUTS GERAIS --- */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] {
-            background-color: #ffffff;
-            border: 1px solid #e5e7eb;
-            border-radius: 8px;
-            color: var(--text-dark);
-            height: 42px;
-            padding-left: 12px;
-        }
-        
-        label {
-            font-size: 0.85rem !important;
-            color: var(--text-light) !important;
-            font-weight: 500 !important;
+            color: var(--primary) !important;
+            font-weight: 700 !important;
+            border-bottom: 2px solid var(--primary) !important;
         }
 
         /* --- EXPANDERS (OBJETIVOS) --- */
         .streamlit-expanderHeader {
             background-color: var(--bg-card);
-            border: 1px solid transparent;
+            border: 1px solid #eee;
             border-radius: var(--border-radius);
-            padding: 1rem 1.5rem;
+            padding: 1rem;
             margin-bottom: 0.5rem;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.02);
             color: var(--text-dark);
+            font-weight: 600;
         }
         .streamlit-expanderHeader:hover {
-            box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            color: #000;
+            border-color: var(--primary);
+            color: var(--primary);
         }
         div[data-testid="stExpander"] {
             border: none;
@@ -134,83 +118,69 @@ st.markdown("""
         /* --- KR CARDS --- */
         div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"] {
             background-color: var(--bg-card);
-            border: 1px solid rgba(0,0,0,0.05) !important;
-            border-left: 4px solid var(--primary) !important;
+            border: 1px solid #f0f0f0 !important;
+            border-left: 4px solid var(--primary) !important; /* Detalhe lateral */
             border-radius: var(--border-radius);
             padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            margin-bottom: 1rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
         }
+        div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"]:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.06);
+        }
+        
         div[data-testid="stContainer"] p {
             font-size: 0.95rem;
             color: var(--text-dark);
-            margin-bottom: 0.5rem;
         }
 
         /* --- BARRA DE PROGRESSO --- */
         .stProgress { background-color: transparent; }
         .stProgress > div > div > div > div {
             background: linear-gradient(90deg, var(--accent) 0%, #a3d929 100%);
-            border-radius: 10px;
         }
         .stProgress > div > div > div {
-            background-color: #e5e7eb;
-            border-radius: 10px;
+            background-color: #f0f0f0;
             height: 8px !important;
+            border-radius: 4px;
         }
         div[data-testid="stProgress"] + div {
-            font-weight: 600;
+            font-weight: 700;
             color: var(--text-dark);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
 
         /* --- BOTÕES --- */
         button[kind="secondary"] {
             background-color: white;
-            border: 1px solid #e5e7eb;
+            border: 1px solid #e0e0e0;
             color: var(--text-dark);
             border-radius: 8px;
             font-weight: 500;
-            font-size: 0.9rem;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            font-size: 0.85rem;
         }
         button[kind="secondary"]:hover {
-            border-color: #000 !important; /* Força borda preta no hover */
-            color: #000 !important;
-            background-color: #fcfcfd;
+            border-color: var(--primary);
+            color: var(--primary);
+            background-color: #f8f8ff;
         }
-        button[kind="secondary"]:focus {
-            border-color: #000 !important;
-            color: #000 !important;
-            box-shadow: none !important;
-        }
-        
-        /* Remove estilo do botão de lixeira para ficar limpo */
+        /* Remove estilo do botão de lixeira dentro dos containers */
         button[kind="secondary"]:has(div > svg) {
             border: none;
             background: transparent;
-            box-shadow: none;
         }
 
         /* --- DATA EDITOR --- */
         div[data-testid="stDataFrame"] {
-            border: 1px solid #e5e7eb;
+            border: 1px solid #f0f0f0;
             border-radius: 8px;
-            overflow: hidden;
         }
         div[data-testid="stDataFrame"] div[data-testid="stHeader"] {
-            background-color: #f9fafb;
-            border-bottom: 1px solid #e5e7eb;
-            color: var(--text-dark);
-            font-weight: 600;
-        }
-        .sub-header {
-            font-size: 0.8rem;
+            background-color: #fcfcfc;
             color: var(--text-light);
-            text-transform: uppercase;
-            font-weight: 600;
-            margin-bottom: 0.5rem;
-            letter-spacing: 0.05em;
+            font-size: 0.85rem;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -402,7 +372,7 @@ if check_password():
 
                         # --- HIERARQUIA 2: KRs ---
                         st.markdown("<div style='margin-top: 1.5rem;'></div>", unsafe_allow_html=True)
-                        st.markdown("<div class='sub-header'>Resultados Chave (KRs)</div>", unsafe_allow_html=True)
+                        st.markdown("<div style='font-size: 0.8rem; color: #6b7280; font-weight: 600; text-transform: uppercase; margin-bottom: 0.5rem;'>Resultados Chave (KRs)</div>", unsafe_allow_html=True)
                         
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
