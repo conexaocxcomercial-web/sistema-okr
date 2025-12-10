@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import date
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="Gestão de OKR", layout="wide")
 
 # --- 2. ARQUIVOS E CONSTANTES ---
 DATA_FILE = 'okr_base_dados.csv'
@@ -103,7 +103,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("🔒 Login")
+        st.title("Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
             if senha == "admin123":
@@ -175,7 +175,7 @@ if check_password():
         st.divider()
         if st.button("Forçar Salvamento Geral"):
             st.session_state['df_master'].to_csv(DATA_FILE, index=False)
-            st.toast("Dados salvos com sucesso!", icon="✅")
+            st.toast("Dados salvos com sucesso!")
 
     # --- VISÃO PRINCIPAL ---
     
@@ -255,7 +255,7 @@ if check_password():
                             st.rerun()
 
     st.markdown("---")
-    with st.expander("📂 Exportar Dados"):
+    with st.expander("Exportar Dados"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
         st.download_button(
             "Baixar Excel Completo",
