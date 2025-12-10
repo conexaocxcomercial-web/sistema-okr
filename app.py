@@ -125,7 +125,6 @@ if check_password():
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
             o = st.text_input("Objetivo Macro")
-            # AJUSTE 1: Removido input de KR. Criação simplificada.
             if st.form_submit_button("Criar Objetivo"):
                 if o:
                     novo_okr = {
@@ -166,7 +165,7 @@ if check_password():
                     
                     with st.expander(label_obj, expanded=True):
                         
-                        # AJUSTE 3: Botão de Excluir Objetivo
+                        # Botão de Excluir Objetivo
                         c_edit_obj, c_del_obj = st.columns([5, 1])
                         with c_edit_obj:
                             new_name = st.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
@@ -174,19 +173,19 @@ if check_password():
                                 st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
                                 st.rerun()
                         with c_del_obj:
-                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo e todos seus KRs"):
+                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo"):
                                 st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                 st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                 st.rerun()
 
                         st.markdown("### Resultados Chave (KRs)")
                         
-                        # --- HIERARQUIA 2: KRs (CARDS MINIMALISTAS) ---
+                        # --- HIERARQUIA 2: KRs ---
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
                         for kr in krs:
                             mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
-                            df_kr = df[mask_kr]  # Pegamos a cópia para visualização
+                            df_kr = df[mask_kr] 
                             
                             prog_kr = df_kr['Progresso (%)'].mean()
                             if pd.isna(prog_kr): prog_kr = 0.0
@@ -214,7 +213,6 @@ if check_password():
                                     "Departamento": None, "Objetivo": None, "Resultado Chave (KR)": None
                                 }
                                 
-                                # AJUSTE 2: Key com hash para evitar colisão de ID e BUG de edição
                                 unique_key = f"edit_{hash(depto + obj + kr)}"
                                 df_edit = st.data_editor(
                                     df_kr, 
@@ -230,12 +228,11 @@ if check_password():
                                     df_edit['Objetivo'] = obj
                                     df_edit['Resultado Chave (KR)'] = kr
                                     
-                                    # Lógica de atualização segura
                                     idxs = df_kr.index
                                     st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], df_edit], ignore_index=True)
                                     
-                                    # AJUSTE 2 (Parte B): Ordenar para evitar que linhas pulem de lugar (Causa raiz do bug)
+                                    # Correção do Bug de Ordenação
                                     st.session_state['df_master'] = st.session_state['df_master'].sort_values(
                                         by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
                                     ).reset_index(drop=True)
@@ -254,10 +251,20 @@ if check_password():
                                         'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Nova Tarefa', 'Responsável': ''
                                     }
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], pd.DataFrame([dummy])], ignore_index=True)
-                                    # Ordena também na criação para manter consistência
+                                    
                                     st.session_state['df_master'] = st.session_state['df_master'].sort_values(
                                         by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
                                     ).reset_index(drop=True)
                                     
                                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                     st.rerun()
+    
+    # --- RODAPÉ COM EXPORTAÇÃO ---
+    st.markdown("---")
+    with st.expander("📂 Exportar Dados"):
+        st.dataframe(st.session_state['df_master'], use_container_width=True)
+        st.download_button(
+            "📥 Baixar Excel Completo",
+            converter_para_excel(st.session_state['df_master']),
+            "okrs_imobanco.xlsx"
+        )
