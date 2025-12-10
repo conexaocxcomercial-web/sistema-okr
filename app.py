@@ -1,132 +1,265 @@
 import streamlit as st
 import pandas as pd
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
-from datetime import datetime
-import io
+import os
+from io import BytesIO
+from datetime import date
 
-# --- CONFIGURAÇÕES DA PÁGINA ---
-st.set_page_config(page_title="Sistema OKR - CX Data", layout="wide")
+# --- 1. CONFIGURAÇÃO INICIAL ---
+st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- CONEXÃO COM O GOOGLE SHEETS ---
-def conectar_google_sheets():
-    # Define o escopo de permissões
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    
-    # Carrega as credenciais do arquivo JSON
-    # Certifique-se de que o arquivo 'service_account.json' está na mesma pasta que este script
-    creds = ServiceAccountCredentials.from_json_keyfile_name("service_account.json", scope)
-    client = gspread.authorize(creds)
-    
-    # Abre a planilha pelo ID
-    sheet_id = "1EDaY5PdzTzLqCOS2w9iNNpIshmK5vRtUr8sXhLgwQc0"
-    spreadsheet = client.open_by_key(sheet_id)
-    return spreadsheet
+# --- 2. ARQUIVOS E CONSTANTES ---
+DATA_FILE = 'okr_base_dados.csv'
+DEPT_FILE = 'config_departamentos.csv'
+OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
 
-# Função para carregar dados
-def carregar_dados():
-    sh = conectar_google_sheets()
+# --- 3. FUNÇÕES DE DADOS (ROBUSTAS) ---
+
+def carregar_dados_seguro():
+    """Carrega dados, corrige datas e preenche buracos vazios."""
+    if not os.path.exists(DATA_FILE):
+        return pd.DataFrame(columns=[
+            'Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 
+            'Status', 'Responsável', 'Prazo', 'Avanço', 'Alvo', 'Progresso (%)'
+        ])
     
-    # Carrega aba de Dados
     try:
-        worksheet_dados = sh.worksheet("Dados")
-        data_dados = worksheet_dados.get_all_records()
-        df_dados = pd.DataFrame(data_dados)
-    except Exception:
-        # Cria dataframe vazio se a aba estiver vazia ou não existir
-        df_dados = pd.DataFrame()
-        worksheet_dados = sh.worksheet("Dados")
-    
-    return df_dados, worksheet_dados
-
-# --- INTERFACE E LÓGICA ---
-def main():
-    st.title("📊 Sistema de Gestão de OKRs")
-    st.caption("Conectado a: OKR_System_DB")
-
-    # Tentativa de conexão
-    try:
-        df_dados, worksheet_dados = carregar_dados()
-        st.success("Conexão com banco de dados estabelecida com sucesso!")
-    except Exception as e:
-        st.error(f"Erro ao conectar na planilha: {e}")
-        st.info("Verifique se o arquivo 'service_account.json' está na pasta e se o e-mail do bot tem permissão de editor na planilha.")
-        return
-
-    # --- MENU LATERAL ---
-    menu = st.sidebar.selectbox("Navegação", ["Dashboard", "Registrar OKR", "Exportar Dados"])
-
-    # --- 1. DASHBOARD ---
-    if menu == "Dashboard":
-        st.header("Visão Geral dos OKRs")
+        df = pd.read_csv(DATA_FILE)
         
-        if not df_dados.empty:
-            st.dataframe(df_dados, use_container_width=True)
-            
-            # Exemplo de métrica simples: Contagem de status
-            if "Status" in df_dados.columns:
-                st.subheader("Distribuição de Status")
-                st.bar_chart(df_dados["Status"].value_counts())
-        else:
-            st.warning("A aba 'Dados' está vazia ou não foi possível ler os registros.")
-
-    # --- 2. REGISTRAR OKR ---
-    elif menu == "Registrar OKR":
-        st.header("Novo Registro")
+        # 1. Preenche textos vazios com string vazia
+        text_cols = ['Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 'Status', 'Responsável']
+        for col in text_cols:
+            if col in df.columns:
+                df[col] = df[col].astype(str).replace('nan', '').fillna('')
         
-        with st.form("form_okr"):
-            col1, col2 = st.columns(2)
-            objetivo = col1.text_input("Objetivo")
-            key_result = col2.text_input("Key Result (KR)")
-            
-            responsavel = st.selectbox("Responsável", ["Jhonattan", "Colaborador 1", "Colaborador 2"])
-            status = st.selectbox("Status", ["Não Iniciado", "Em Andamento", "Concluído"])
-            progresso = st.slider("Progresso (%)", 0, 100, 0)
-            
-            submitted = st.form_submit_button("Salvar OKR")
-            
-            if submitted:
-                if not objetivo or not key_result:
-                    st.warning("Por favor, preencha o Objetivo e o KR.")
-                else:
-                    # Prepara a nova linha
-                    nova_linha = [
-                        datetime.now().strftime("%Y-%m-%d %H:%M:%S"), # Data Registro
-                        objetivo,
-                        key_result,
-                        responsavel,
-                        status,
-                        progresso
-                    ]
-                    
-                    # Adiciona na planilha Google
-                    try:
-                        worksheet_dados.append_row(nova_linha)
-                        st.success("OKR registrado com sucesso!")
-                    except Exception as e:
-                        st.error(f"Erro ao salvar no Google Sheets: {e}")
-
-    # --- 3. EXPORTAR DADOS ---
-    elif menu == "Exportar Dados":
-        st.header("Exportação")
-        st.write("Baixe os dados atuais da aba 'Dados' em formato Excel.")
+        # 2. Corrige Datas
+        if 'Prazo' in df.columns:
+            df['Prazo'] = pd.to_datetime(df['Prazo'], errors='coerce')
         
-        if not df_dados.empty:
-            # Converte DataFrame para Excel em memória
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                df_dados.to_excel(writer, index=False, sheet_name='Dados')
+        # 3. Corrige Números
+        num_cols = ['Avanço', 'Alvo', 'Progresso (%)']
+        for col in num_cols:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
                 
-            excel_data = output.getvalue()
-            
-            st.download_button(
-                label="📥 Baixar Planilha (.xlsx)",
-                data=excel_data,
-                file_name="relatorio_okr_cxdata.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
-        else:
-            st.warning("Não há dados para exportar.")
+        return df
+    except Exception as e:
+        st.error(f"Erro ao ler banco de dados: {e}")
+        return pd.DataFrame()
 
-if __name__ == "__main__":
-    main()
+def carregar_departamentos():
+    """Lê o arquivo de departamentos ou cria o padrão."""
+    if os.path.exists(DEPT_FILE):
+        try:
+            return pd.read_csv(DEPT_FILE)['Departamento'].tolist()
+        except:
+            pass 
+    
+    padrao = ["Comercial", "Financeiro", "Operacional", "RH", "Tecnologia", "Marketing"]
+    pd.DataFrame(padrao, columns=['Departamento']).to_csv(DEPT_FILE, index=False)
+    return padrao
+
+def salvar_departamentos(lista_deptos):
+    """Salva a lista atualizada no arquivo."""
+    pd.DataFrame(lista_deptos, columns=['Departamento']).to_csv(DEPT_FILE, index=False)
+
+def calcular_progresso(row):
+    try:
+        av = float(row['Avanço'])
+        al = float(row['Alvo'])
+        if al > 0:
+            return min(av / al, 1.0)
+        return 0.0
+    except:
+        return 0.0
+
+def converter_para_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df_exp = df.copy()
+        df_exp['Prazo'] = df_exp['Prazo'].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else '')
+        df_exp.to_excel(writer, index=False, sheet_name='OKRs')
+    return output.getvalue()
+
+def barra_progresso_html(valor):
+    if pd.isna(valor): valor = 0.0
+    pct = int(valor * 100)
+    cor = "#ef4444" if pct < 30 else "#eab308" if pct < 70 else "#22c55e"
+    return f"""
+    <div style="width:100%; background-color:#e5e7eb; border-radius:4px; height:18px; display:flex; align-items:center;">
+        <div style="background-color:{cor}; width:{pct}%; height:100%; border-radius:4px; transition:width 0.3s;"></div>
+        <span style="margin-left:8px; font-size:12px; font-weight:bold; color:#333;">{pct}%</span>
+    </div>
+    """
+
+# --- 4. INICIALIZAÇÃO DA MEMÓRIA ---
+if 'df_master' not in st.session_state:
+    st.session_state['df_master'] = carregar_dados_seguro()
+
+if 'password_correct' not in st.session_state:
+    st.session_state['password_correct'] = False
+
+# --- 5. TELA DE LOGIN ---
+def check_password():
+    if st.session_state["password_correct"]: return True
+    col1, col2, col3 = st.columns([1,2,1])
+    with col2:
+        st.title("🔒 Login")
+        senha = st.text_input("Senha", type="password")
+        if st.button("Entrar"):
+            if senha == "admin123":
+                st.session_state["password_correct"] = True
+                st.rerun()
+            else:
+                st.error("Senha incorreta")
+    return False
+
+# --- 6. APLICAÇÃO PRINCIPAL ---
+if check_password():
+    st.title("Painel de OKRs")
+
+    # Variáveis de trabalho
+    df = st.session_state['df_master']
+    lista_deptos = carregar_departamentos()
+
+    # --- BARRA LATERAL (MENU) ---
+    with st.sidebar:
+        st.title("Menu")
+
+        # --- A. GERENCIAR DEPARTAMENTOS ---
+        with st.expander("🏢 Gerenciar Departamentos", expanded=False):
+            st.caption("Adicione ou remova setores da lista.")
+            
+            with st.form("form_add_dept", clear_on_submit=True):
+                novo_dept_input = st.text_input("Criar Novo:")
+                enviou = st.form_submit_button("➕ Adicionar Dept")
+                
+                if enviou:
+                    if novo_dept_input and novo_dept_input not in lista_deptos:
+                        lista_deptos.append(novo_dept_input)
+                        salvar_departamentos(lista_deptos)
+                        st.success(f"{novo_dept_input} criado!")
+                        st.rerun()
+                    elif novo_dept_input in lista_deptos:
+                        st.warning("Já existe!")
+
+            st.divider()
+            
+            # Remover
+            dept_to_remove = st.selectbox("Excluir Dept:", ["Selecione..."] + lista_deptos)
+            if st.button("🗑️ Excluir Selecionado"):
+                if dept_to_remove != "Selecione...":
+                    lista_deptos.remove(dept_to_remove)
+                    salvar_departamentos(lista_deptos)
+                    st.success("Removido!")
+                    st.rerun()
+
+        st.divider()
+
+        # --- B. NOVO REGISTRO DE OKR ---
+        st.subheader("📝 Novo Registro")
+        with st.form("quick_add", clear_on_submit=True):
+            qd_dept = st.selectbox("Departamento", lista_deptos)
+            qd_obj = st.text_input("Objetivo")
+            qd_kr = st.text_input("KR (Resultado Chave)")
+            
+            if st.form_submit_button("Salvar Novo OKR"):
+                novo_okr = {
+                    'Departamento': qd_dept, 'Objetivo': qd_obj, 'Resultado Chave (KR)': qd_kr,
+                    'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
+                    'Prazo': pd.to_datetime(date.today()), 'Tarefa': '', 'Responsável': ''
+                }
+                st.session_state['df_master'] = pd.concat([df, pd.DataFrame([novo_okr])], ignore_index=True)
+                st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+                st.rerun()
+
+        st.divider()
+        if st.button("💾 Forçar Salvamento Geral"):
+            st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+            st.toast("Dados salvos com sucesso!", icon="✅")
+
+    # --- VISÃO PRINCIPAL ---
+    
+    if df.empty:
+        st.info("Nenhum OKR cadastrado. Use o menu lateral para criar o primeiro.")
+    else:
+        depts_com_dados = [d for d in df['Departamento'].unique() if d and d.strip()]
+        todos_depts_visualizacao = sorted(list(set(depts_com_dados) | set(lista_deptos)))
+        
+        abas = st.tabs(todos_depts_visualizacao)
+        
+        # Variável para controlar se houve edição
+        houve_edicao = False
+
+        for i, depto in enumerate(todos_depts_visualizacao):
+            with abas[i]:
+                df_depto = df[df['Departamento'] == depto]
+                
+                if df_depto.empty:
+                    st.caption(f"O departamento '{depto}' existe, mas não tem OKRs cadastrados ainda.")
+                    continue
+                
+                objs_unicos = [o for o in df_depto['Objetivo'].unique() if o and o.strip()]
+
+                for obj in objs_unicos:
+                    mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
+                    df_obj = df[mask_obj]
+                    
+                    media = df_obj['Progresso (%)'].mean()
+                    
+                    with st.expander(f"{obj}", expanded=False):
+                        # Barra desenhada ANTES da edição
+                        st.markdown(barra_progresso_html(media), unsafe_allow_html=True)
+                        
+                        c_ren, _ = st.columns([3,1])
+                        novo_nome = c_ren.text_input("Renomear Objetivo", value=obj, key=f"ren_{depto}_{obj}")
+                        if novo_nome != obj:
+                            st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = novo_nome
+                            st.rerun()
+
+                        col_cfg = {
+                            "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
+                            "Status": st.column_config.SelectboxColumn(options=OPCOES_STATUS, required=True),
+                            "Prazo": st.column_config.DateColumn(format="DD/MM/YYYY"),
+                            "Departamento": None, 
+                            "Objetivo": None
+                        }
+                        
+                        df_editado = st.data_editor(
+                            df_obj,
+                            column_config=col_cfg,
+                            use_container_width=True,
+                            num_rows="dynamic",
+                            key=f"editor_{depto}_{obj}"
+                        )
+                        
+                        # --- CORREÇÃO DE ATUALIZAÇÃO ---
+                        if not df_editado.equals(df_obj):
+                            # 1. Recalcula percentual
+                            df_editado['Progresso (%)'] = df_editado.apply(calcular_progresso, axis=1)
+                            # 2. Garante chaves
+                            df_editado['Departamento'] = depto
+                            df_editado['Objetivo'] = obj
+                            
+                            # 3. Atualiza Master
+                            idxs_originais = df_obj.index
+                            st.session_state['df_master'] = st.session_state['df_master'].drop(idxs_originais)
+                            st.session_state['df_master'] = pd.concat(
+                                [st.session_state['df_master'], df_editado], 
+                                ignore_index=True
+                            )
+                            
+                            # 4. Salva no Disco
+                            st.session_state['df_master'].to_csv(DATA_FILE, index=False)
+                            
+                            # 5. Mágica do Refresh: Roda o script de novo para atualizar a barra lá em cima
+                            st.rerun()
+
+    st.markdown("---")
+    with st.expander("📂 Exportar Dados"):
+        st.dataframe(st.session_state['df_master'], use_container_width=True)
+        st.download_button(
+            "📥 Baixar Excel Completo",
+            converter_para_excel(st.session_state['df_master']),
+            "okrs_imobanco.xlsx"
+        )
+        
