@@ -7,44 +7,38 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- CSS ENTERPRISE (VISUAL PROFISSIONAL) ---
+# --- CSS ENTERPRISE (VISUAL LIMPO E PROFISSIONAL) ---
 st.markdown("""
     <style>
-        /* Importando Fonte Clean e Moderna (Inter - Padrão de UI moderna) */
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-        /* VARIÁVEIS DO TEMA */
         :root {
-            --primary: #7371ff;       /* Azul/Roxo Principal */
-            --accent: #bef533;        /* Verde Neon para Sucesso */
-            --highlight: #dbbfff;     /* Lilás Suave para fundos */
-            --text-dark: #1e1e1e;     /* Cinza quase preto para texto */
-            --text-light: #6b7280;    /* Cinza médio para descrições */
-            --bg-page: #f3f4f6;       /* Cinza muito claro para o fundo da página */
-            --bg-card: #ffffff;       /* Branco absoluto para cartões */
-            --border-radius: 12px;    /* Arredondamento padrão */
+            --primary: #7371ff;
+            --accent: #bef533;
+            --text-dark: #1e1e1e;
+            --text-light: #6b7280;
+            --bg-page: #f3f4f6;
+            --bg-card: #ffffff;
+            --border-radius: 12px;
         }
 
-        /* RESET GLOBAL */
         html, body, [class*="css"] {
             font-family: 'Inter', sans-serif;
             color: var(--text-dark);
-            -webkit-font-smoothing: antialiased; /* Texto mais nítido */
+            -webkit-font-smoothing: antialiased;
         }
 
-        /* FUNDO DA PÁGINA */
         .stApp {
             background-color: var(--bg-page);
         }
 
-        /* --- BARRA LATERAL (SIDEBAR) --- */
+        /* --- BARRA LATERAL --- */
         section[data-testid="stSidebar"] {
             background-color: var(--bg-card);
             border-right: 1px solid rgba(0,0,0,0.04);
             box-shadow: 2px 0 12px rgba(0,0,0,0.02);
         }
         
-        /* Títulos na Sidebar */
         section[data-testid="stSidebar"] h3 {
             font-size: 0.85rem;
             text-transform: uppercase;
@@ -54,8 +48,33 @@ st.markdown("""
             font-weight: 600;
         }
 
-        /* --- OBJETIVOS (EXPANDERS) --- */
-        /* Header do Expander (Onde clica) */
+        /* --- ABAS (DEPARTAMENTOS) - REMOÇÃO DAS LISTRAS --- */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 20px;
+            border-bottom: none !important; /* Remove a linha cinza de fora a fora */
+            margin-bottom: 20px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: auto;
+            background-color: transparent;
+            border: none !important; /* Remove qualquer borda do botão */
+            padding: 8px 16px;
+            font-weight: 500;
+            color: var(--text-light);
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+        .stTabs [aria-selected="true"] {
+            color: var(--primary) !important;
+            background-color: rgba(115, 113, 255, 0.08) !important; /* Fundo muito sutil */
+            font-weight: 600;
+        }
+        /* Remove a barrinha vermelha padrão do Streamlit no topo das abas */
+        .stTabs [data-baseweb="tab"] > div:first-child {
+            background-color: transparent !important; 
+        }
+
+        /* --- EXPANDERS (OBJETIVOS) --- */
         .streamlit-expanderHeader {
             background-color: var(--bg-card);
             border: 1px solid transparent;
@@ -63,26 +82,19 @@ st.markdown("""
             padding: 1rem 1.5rem;
             margin-bottom: 0.5rem;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
-            transition: all 0.2s ease;
             font-weight: 600;
             color: var(--text-dark);
         }
         .streamlit-expanderHeader:hover {
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            transform: translateY(-1px);
             color: var(--primary);
         }
-        /* Conteúdo interno do Expander */
         div[data-testid="stExpander"] {
             border: none;
             background: transparent;
         }
-        div[data-testid="stExpander"] > div[role="group"] {
-            padding-top: 1rem;
-        }
 
-        /* --- KR CARDS (CARTÕES DE RESULTADO CHAVE) --- */
-        /* O container com borda vira o nosso Card Principal */
+        /* --- KR CARDS --- */
         div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"][style*="border-color:"] {
             background-color: var(--bg-card);
             border: 1px solid rgba(0,0,0,0.05) !important;
@@ -92,36 +104,30 @@ st.markdown("""
             margin-bottom: 1.5rem;
             box-shadow: 0 2px 8px rgba(0,0,0,0.04);
         }
-
-        /* Título do KR */
         div[data-testid="stContainer"] p {
             font-size: 0.95rem;
             color: var(--text-dark);
             margin-bottom: 0.5rem;
         }
 
-        /* --- BARRA DE PROGRESSO "CLEAN" --- */
-        .stProgress {
-            background-color: transparent;
-        }
+        /* --- BARRA DE PROGRESSO --- */
+        .stProgress { background-color: transparent; }
         .stProgress > div > div > div > div {
-            background: var(--accent); /* Verde Neon */
             background: linear-gradient(90deg, var(--accent) 0%, #a3d929 100%);
             border-radius: 10px;
         }
         .stProgress > div > div > div {
-            background-color: #e5e7eb; /* Fundo cinza claro da barra */
+            background-color: #e5e7eb;
             border-radius: 10px;
-            height: 8px !important; /* Barra mais fina e elegante */
+            height: 8px !important;
         }
-        /* Texto da porcentagem */
         div[data-testid="stProgress"] + div {
             font-weight: 600;
             color: var(--primary);
             font-size: 0.9rem;
         }
 
-        /* --- INPUTS E SELECTBOX (Visual SaaS) --- */
+        /* --- INPUTS --- */
         .stTextInput input, .stSelectbox div[data-baseweb="select"] {
             background-color: #ffffff;
             border: 1px solid #e5e7eb;
@@ -129,11 +135,10 @@ st.markdown("""
             color: var(--text-dark);
             height: 42px;
             padding-left: 12px;
-            transition: border 0.2s, box-shadow 0.2s;
         }
         .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
             border-color: var(--primary);
-            box-shadow: 0 0 0 3px rgba(115, 113, 255, 0.1); /* Glow suave azul */
+            box-shadow: 0 0 0 3px rgba(115, 113, 255, 0.1);
             outline: none;
         }
         label {
@@ -143,7 +148,6 @@ st.markdown("""
         }
 
         /* --- BOTÕES --- */
-        /* Botão Primário (Solid) */
         button[kind="secondary"] {
             background-color: white;
             border: 1px solid #e5e7eb;
@@ -152,56 +156,30 @@ st.markdown("""
             font-weight: 500;
             font-size: 0.9rem;
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-            transition: all 0.2s;
         }
         button[kind="secondary"]:hover {
             border-color: var(--primary);
             color: var(--primary);
             background-color: #fcfcfd;
         }
-        
-        /* Botão de Excluir (Ícone) */
         button[kind="secondary"]:has(div > svg) {
             border: none;
             background: transparent;
             box-shadow: none;
         }
-        
-        /* --- ABAS (TABS) --- */
-        .stTabs [data-baseweb="tab-list"] {
-            gap: 24px;
-            border-bottom: 1px solid #e5e7eb;
-            margin-bottom: 24px;
-        }
-        .stTabs [data-baseweb="tab"] {
-            height: auto;
-            background-color: transparent;
-            border: none;
-            padding: 0 0 12px 0;
-            font-weight: 500;
-            color: var(--text-light);
-            border-bottom: 2px solid transparent;
-            border-radius: 0;
-        }
-        .stTabs [aria-selected="true"] {
-            color: var(--primary);
-            border-bottom: 2px solid var(--primary);
-        }
 
-        /* --- DATA EDITOR (TABELA) --- */
+        /* --- DATA EDITOR --- */
         div[data-testid="stDataFrame"] {
             border: 1px solid #e5e7eb;
             border-radius: 8px;
             overflow: hidden;
         }
         div[data-testid="stDataFrame"] div[data-testid="stHeader"] {
-            background-color: #f9fafb; /* Cabeçalho cinza bem claro */
+            background-color: #f9fafb;
             border-bottom: 1px solid #e5e7eb;
             color: var(--text-dark);
             font-weight: 600;
         }
-
-        /* --- TEXTOS AUXILIARES --- */
         .sub-header {
             font-size: 0.8rem;
             color: var(--text-light);
@@ -290,7 +268,7 @@ def check_password():
     if st.session_state["password_correct"]: return True
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("Login")
+        st.title("🔒 Login")
         senha = st.text_input("Senha", type="password")
         if st.button("Entrar"):
             if senha == "admin123":
@@ -302,9 +280,6 @@ def check_password():
 
 # --- 6. APLICAÇÃO PRINCIPAL ---
 if check_password():
-    # Título principal mais limpo (Pode ser removido se o logo na sidebar for suficiente, mas mantive)
-    # st.title("Painel de OKRs") 
-
     df = st.session_state['df_master']
     lista_deptos = carregar_departamentos()
 
@@ -312,9 +287,8 @@ if check_password():
     with st.sidebar:
         if os.path.exists(LOGO_FILE):
             st.image(LOGO_FILE, use_column_width=True)
-            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True) # Espaço
-        else:
-            st.markdown(f"<h2 style='color: #7371ff; font-weight:700;'>CX Data</h2>", unsafe_allow_html=True)
+            st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        # REMOVIDO: Else com texto "CX Data" foi apagado conforme solicitado.
             
         st.markdown("### CONFIGURAÇÕES")
         
@@ -354,7 +328,6 @@ if check_password():
                     st.warning("Preencha o nome.")
 
     # --- ÁREA PRINCIPAL ---
-    # Cabeçalho da página principal
     c_head_1, c_head_2 = st.columns([3,1])
     with c_head_1:
         st.markdown(f"<h2 style='font-weight: 700; color: #1e1e1e;'>Painel de Gestão</h2>", unsafe_allow_html=True)
@@ -368,7 +341,7 @@ if check_password():
         
         for i, depto in enumerate(depts):
             with abas[i]:
-                st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True) # Espaço
+                st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
                 df_d = df[df['Departamento'] == depto]
                 if df_d.empty:
                     st.info("Nenhum OKR iniciado neste departamento.")
@@ -392,7 +365,6 @@ if check_password():
                     
                     with st.expander(label_obj, expanded=True):
                         
-                        # Cabeçalho do Objetivo (Edição e Exclusão)
                         c_edit_obj, c_del_obj = st.columns([6, 1])
                         with c_edit_obj:
                             new_name = st.text_input("Título do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
@@ -422,12 +394,10 @@ if check_password():
                             if pd.isna(prog_kr): prog_kr = 0.0
                             prog_kr = max(0.0, min(1.0, float(prog_kr)))
 
-                            # CARD DO KR
                             with st.container(border=True):
                                 c_title, c_bar = st.columns([3, 1])
                                 
                                 with c_title:
-                                    # Título do KR estilizado
                                     st.markdown(f"<span style='font-size:1rem; font-weight:600; color:#1e1e1e;'>🎯 {kr}</span>", unsafe_allow_html=True)
                                     new_kr = st.text_input("Editar KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
                                     if new_kr != kr:
@@ -435,7 +405,6 @@ if check_password():
                                         st.rerun()
                                 
                                 with c_bar:
-                                    # Barra de progresso com texto alinhado
                                     st.progress(prog_kr, text=f"{int(prog_kr*100)}%")
                                 
                                 st.markdown("<div style='margin-top:12px; margin-bottom: 4px; font-size:0.75rem; font-weight:600; color:#6b7280; text-transform:uppercase;'>Tarefas & Ações</div>", unsafe_allow_html=True)
@@ -474,7 +443,7 @@ if check_password():
                                     st.rerun()
 
                         st.markdown("")
-                        with st.popover("Adicionar Novo KR"):
+                        with st.popover("➕ Adicionar Novo KR"):
                             nk = st.text_input("Nome do KR", key=f"nk_{obj}")
                             if st.button("Criar KR", key=f"bk_{obj}"):
                                 if nk:
@@ -492,12 +461,11 @@ if check_password():
                                     st.session_state['df_master'].to_csv(DATA_FILE, index=False)
                                     st.rerun()
     
-    # --- RODAPÉ COM EXPORTAÇÃO ---
     st.markdown("---")
-    with st.expander("Central de Exportação"):
+    with st.expander("📂 Central de Exportação"):
         st.dataframe(st.session_state['df_master'], use_container_width=True)
         st.download_button(
-            "Baixar Excel Completo",
+            "📥 Baixar Excel Completo",
             converter_para_excel(st.session_state['df_master']),
             "okrs_imobanco.xlsx"
         )
