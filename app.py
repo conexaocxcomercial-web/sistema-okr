@@ -7,6 +7,267 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
+# --- ESTILOS CSS CUSTOMIZADOS ---
+st.markdown("""
+<style>
+    @import url('https://fonts.cdnfonts.com/css/helvetica-neue-9');
+    
+    /* Fonte global */
+    * {
+        font-family: 'Helvetica Now', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+    }
+    
+    /* Background principal */
+    .stApp {
+        background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+    }
+    
+    /* Sidebar */
+    [data-testid="stSidebar"] {
+        background: linear-gradient(180deg, #1e1e1e 0%, #252525 100%);
+        border-right: 1px solid #7371ff33;
+    }
+    
+    [data-testid="stSidebar"] h2, [data-testid="stSidebar"] h3 {
+        color: #dbbfff;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Títulos principais */
+    h1 {
+        color: #dbbfff;
+        font-weight: 200;
+        font-size: 2.8rem;
+        letter-spacing: 1px;
+        margin-bottom: 2rem;
+        background: linear-gradient(90deg, #dbbfff 0%, #7371ff 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    
+    h2, h3 {
+        color: #dbbfff;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+    }
+    
+    /* Tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+        background-color: transparent;
+        padding: 0.5rem 0;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+        border: 1px solid #7371ff33;
+        border-radius: 8px;
+        color: #dbbfff;
+        font-weight: 300;
+        padding: 0.75rem 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: linear-gradient(135deg, #7371ff22 0%, #dbbfff11 100%);
+        border-color: #7371ff;
+        transform: translateY(-2px);
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #7371ff 0%, #dbbfff 100%);
+        border-color: #7371ff;
+        color: #1e1e1e;
+        font-weight: 400;
+    }
+    
+    /* Expanders */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+        border: 1px solid #7371ff33;
+        border-radius: 12px;
+        color: #dbbfff;
+        font-weight: 300;
+        font-size: 1.1rem;
+        padding: 1rem 1.5rem;
+        transition: all 0.3s ease;
+    }
+    
+    .streamlit-expanderHeader:hover {
+        border-color: #7371ff;
+        background: linear-gradient(135deg, #7371ff11 0%, #dbbfff11 100%);
+    }
+    
+    [data-testid="stExpander"] {
+        background: transparent;
+        border: none;
+        margin-bottom: 1rem;
+    }
+    
+    /* Containers */
+    [data-testid="stVerticalBlock"] > div:has(> div.element-container) {
+        background: linear-gradient(135deg, #2a2a2a99 0%, #1e1e1e99 100%);
+        border: 1px solid #7371ff33;
+        border-radius: 12px;
+        padding: 1.5rem;
+        backdrop-filter: blur(10px);
+    }
+    
+    /* Botões */
+    .stButton > button {
+        background: linear-gradient(135deg, #7371ff 0%, #ff43c0 100%);
+        color: white;
+        border: none;
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-weight: 300;
+        letter-spacing: 0.5px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 15px rgba(115, 113, 255, 0.3);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(115, 113, 255, 0.5);
+    }
+    
+    /* Inputs */
+    .stTextInput > div > div > input,
+    .stSelectbox > div > div > div,
+    .stDateInput > div > div > input {
+        background-color: #2a2a2a;
+        border: 1px solid #7371ff33;
+        border-radius: 8px;
+        color: #dbbfff;
+        font-weight: 300;
+    }
+    
+    .stTextInput > div > div > input:focus,
+    .stSelectbox > div > div > div:focus,
+    .stDateInput > div > div > input:focus {
+        border-color: #7371ff;
+        box-shadow: 0 0 0 1px #7371ff33;
+    }
+    
+    /* Progress bar */
+    .stProgress > div > div > div > div {
+        background: linear-gradient(90deg, #bef533 0%, #7371ff 50%, #ff43c0 100%);
+    }
+    
+    /* Data editor */
+    [data-testid="stDataFrame"] {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+        border: 1px solid #7371ff33;
+        border-radius: 12px;
+        overflow: hidden;
+    }
+    
+    [data-testid="stDataFrame"] th {
+        background: linear-gradient(135deg, #7371ff 0%, #dbbfff 100%);
+        color: #1e1e1e;
+        font-weight: 400;
+        letter-spacing: 0.5px;
+        border: none;
+    }
+    
+    [data-testid="stDataFrame"] td {
+        background-color: #2a2a2a;
+        color: #dbbfff;
+        border-color: #7371ff22;
+    }
+    
+    /* Forms */
+    [data-testid="stForm"] {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+        border: 1px solid #7371ff33;
+        border-radius: 12px;
+        padding: 1.5rem;
+    }
+    
+    /* Popovers */
+    [data-testid="stPopover"] {
+        background: #1e1e1e;
+        border: 1px solid #7371ff;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(115, 113, 255, 0.3);
+    }
+    
+    /* Dividers */
+    hr {
+        border-color: #7371ff33;
+        margin: 2rem 0;
+    }
+    
+    /* Badges de status */
+    .stMarkdown p {
+        color: #dbbfff;
+        font-weight: 300;
+    }
+    
+    .stMarkdown strong {
+        color: #bef533;
+        font-weight: 400;
+    }
+    
+    /* Captions */
+    .stCaption {
+        color: #7371ff;
+        font-weight: 300;
+        font-style: italic;
+    }
+    
+    /* Login screen */
+    [data-testid="stVerticalBlock"]:has(> div > div > h1:contains("Login")) {
+        background: linear-gradient(135deg, #1e1e1e 0%, #2a2a2a 100%);
+        border: 1px solid #7371ff;
+        border-radius: 20px;
+        padding: 3rem;
+        box-shadow: 0 8px 32px rgba(115, 113, 255, 0.3);
+    }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: #1e1e1e;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(180deg, #7371ff 0%, #ff43c0 100%);
+        border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(180deg, #ff43c0 0%, #7371ff 100%);
+    }
+    
+    /* Alertas */
+    .stAlert {
+        background: linear-gradient(135deg, #2a2a2a 0%, #1e1e1e 100%);
+        border-left: 4px solid #7371ff;
+        color: #dbbfff;
+        border-radius: 8px;
+    }
+    
+    /* Download button */
+    .stDownloadButton > button {
+        background: linear-gradient(135deg, #bef533 0%, #7371ff 100%);
+        color: #1e1e1e;
+        font-weight: 400;
+    }
+    
+    /* Emoji no botão de delete */
+    button[kind="secondary"] {
+        background: linear-gradient(135deg, #ff43c0 0%, #7371ff 100%);
+        border: none;
+    }
+</style>
+""", unsafe_allow_html=True)
+
 # --- 2. ARQUIVOS E CONSTANTES ---
 DATA_FILE = 'okr_base_dados.csv'
 DEPT_FILE = 'config_departamentos.csv'
@@ -127,7 +388,6 @@ if check_password():
             o = st.text_input("Objetivo Macro")
             if st.form_submit_button("Criar Objetivo"):
                 if o:
-                    # AJUSTE: Cria o Objetivo com KR vazio e Tarefa vazia
                     novo_okr = {
                         'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': '',
                         'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
@@ -153,12 +413,10 @@ if check_password():
                     st.caption("Sem dados.")
                     continue
                 
-                # --- HIERARQUIA 1: OBJETIVOS ---
                 objs = [x for x in df_d['Objetivo'].unique() if x]
                 for obj in objs:
                     mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
                     
-                    # AJUSTE: Calcula média ignorando linhas onde KR está vazio (placeholders)
                     mask_validos = mask_obj & (df['Resultado Chave (KR)'] != '')
                     if not df[mask_validos].empty:
                         prog_obj = df[mask_validos]['Progresso (%)'].mean()
@@ -186,8 +444,6 @@ if check_password():
 
                         st.markdown("### Resultados Chave (KRs)")
                         
-                        # --- HIERARQUIA 2: KRs ---
-                        # O filtro 'if x' já garante que o KR vazio criado automaticamente não apareça aqui
                         krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
                         
                         if not krs:
