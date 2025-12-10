@@ -7,20 +7,20 @@ from datetime import date
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- CSS ENTERPRISE (VISUAL SÓBRIO) ---
+# --- CSS ENTERPRISE (VISUAL SÓBRIO - SEM LARANJA) ---
 st.markdown("""
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
         :root {
-            --primary: #7371ff;       /* Mantido apenas para detalhes internos (borda lateral do card) */
-            --accent: #bef533;        /* Verde Neon (Barra de progresso) */
+            --primary: #7371ff;       
+            --accent: #bef533;        
             --text-dark: #1e1e1e;
             --text-light: #6b7280;
             --bg-page: #f3f4f6;
             --bg-card: #ffffff;
             --border-radius: 12px;
-            --focus-color: #333333;   /* NOVA COR DE FOCO (CINZA ESCURO/PRETO) */
+            --focus-border: #000000;  /* PRETO PURO PARA O FOCO */
         }
 
         html, body, [class*="css"] {
@@ -31,6 +31,25 @@ st.markdown("""
 
         .stApp {
             background-color: var(--bg-page);
+        }
+
+        /* --- REMOÇÃO AGRESSIVA DO DESTAQUE LARANJA/PADRÃO --- */
+        /* Isso força o input a ficar preto/cinza quando selecionado */
+        .stTextInput > div > div > input:focus {
+            border-color: var(--focus-border) !important;
+            box-shadow: none !important; /* Remove o brilho laranja */
+        }
+        
+        /* Para o Selectbox (Dropdown) */
+        .stSelectbox > div > div[data-baseweb="select"] > div:focus-within {
+            border-color: var(--focus-border) !important;
+            box-shadow: none !important;
+        }
+        
+        /* Remove a borda vermelha/laranja que aparece as vezes no hover */
+        .stTextInput > div > div > input:hover,
+        .stSelectbox > div > div[data-baseweb="select"] > div:hover {
+            border-color: #333333 !important;
         }
 
         /* --- BARRA LATERAL --- */
@@ -49,7 +68,7 @@ st.markdown("""
             font-weight: 600;
         }
 
-        /* --- ABAS (DEPARTAMENTOS) - ESTILO PRETO/NEGRITO --- */
+        /* --- ABAS (DEPARTAMENTOS) --- */
         .stTabs [data-baseweb="tab-list"] {
             gap: 20px;
             border-bottom: none !important;
@@ -61,23 +80,22 @@ st.markdown("""
             border: none !important;
             padding: 8px 16px;
             font-weight: 500;
-            color: var(--text-light); /* Cor padrão (não selecionado) */
+            color: var(--text-light);
             border-radius: 6px;
             transition: all 0.2s;
         }
-        /* ESTADO SELECIONADO: PRETO E NEGRITO */
         .stTabs [aria-selected="true"] {
-            color: #000000 !important; /* Preto puro */
-            font-weight: 800 !important; /* Negrito forte */
+            color: #000000 !important;
+            font-weight: 800 !important;
             background-color: transparent !important;
-            border-bottom: 3px solid #000000 !important; /* Linha preta grossa */
-            border-radius: 0px; /* Canto quadrado na linha */
+            border-bottom: 3px solid #000000 !important;
+            border-radius: 0px;
         }
         .stTabs [data-baseweb="tab"] > div:first-child {
             background-color: transparent !important; 
         }
 
-        /* --- INPUTS E SELECTBOX (FOCO NEUTRO) --- */
+        /* --- INPUTS GERAIS --- */
         .stTextInput input, .stSelectbox div[data-baseweb="select"] {
             background-color: #ffffff;
             border: 1px solid #e5e7eb;
@@ -86,12 +104,7 @@ st.markdown("""
             height: 42px;
             padding-left: 12px;
         }
-        /* FOCO: REMOVIDO O ROXO, AGORA É CINZA ESCURO */
-        .stTextInput input:focus, .stSelectbox div[data-baseweb="select"]:focus {
-            border-color: var(--focus-color) !important; /* Borda Cinza Escuro */
-            box-shadow: none !important; /* Remove o brilho/glow */
-            outline: none;
-        }
+        
         label {
             font-size: 0.85rem !important;
             color: var(--text-light) !important;
@@ -111,7 +124,7 @@ st.markdown("""
         }
         .streamlit-expanderHeader:hover {
             box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-            color: #000; /* Hover preto */
+            color: #000;
         }
         div[data-testid="stExpander"] {
             border: none;
@@ -147,7 +160,7 @@ st.markdown("""
         }
         div[data-testid="stProgress"] + div {
             font-weight: 600;
-            color: var(--text-dark); /* Texto da % agora é preto também */
+            color: var(--text-dark);
             font-size: 0.9rem;
         }
 
@@ -162,10 +175,17 @@ st.markdown("""
             box-shadow: 0 1px 2px rgba(0,0,0,0.05);
         }
         button[kind="secondary"]:hover {
-            border-color: #000;
-            color: #000;
+            border-color: #000 !important; /* Força borda preta no hover */
+            color: #000 !important;
             background-color: #fcfcfd;
         }
+        button[kind="secondary"]:focus {
+            border-color: #000 !important;
+            color: #000 !important;
+            box-shadow: none !important;
+        }
+        
+        /* Remove estilo do botão de lixeira para ficar limpo */
         button[kind="secondary"]:has(div > svg) {
             border: none;
             background: transparent;
