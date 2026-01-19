@@ -1,0 +1,13 @@
+[viewer]
+hideTopBar = true
+
+[ui]
+hideSidebarNav = true
+
+[theme]
+base = "light"
+primaryColor = "#7371ff"
+backgroundColor = "#fafafa"
+secondaryBackgroundColor = "#ffffff"
+textColor = "#1e1e1e"
+font = "sans serif"
