@@ -1,308 +1,294 @@
 import streamlit as st
 import pandas as pd
 import os
+import time
 from io import BytesIO
 from datetime import date
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide", page_icon="🎯")
 
-# --- 2. ARQUIVOS E CONSTANTES ---
-# DATA_FILE não é mais necessário para leitura, pois vem do SQL
-DEPT_FILE = 'config_departamentos.csv'
-OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
+# --- 2. CONEXÃO HÍBRIDA (Local e Render) ---
+# Tenta pegar a conexão dos Segredos (Render/Env) ou usa o padrão (Local)
+db_url = os.getenv("DATABASE_URL")
 
-# --- 3. CONEXÃO E FUNÇÕES DE DADOS (SQL) ---
-
-# Conexão com o Supabase usando os Secrets configurados
-conn = st.connection("postgresql", type="sql")
-
-def carregar_dados_seguro():
-    try:
-        # Busca os dados no Banco de Dados
-        df = conn.query('SELECT * FROM "okrs"', ttl=0)
-        
-        # Se o banco estiver vazio, retorna a estrutura padrão
-        if df.empty:
-            return pd.DataFrame(columns=[
-                'Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 
-                'Status', 'Responsável', 'Prazo', 'Avanço', 'Alvo', 'Progresso (%)'
-            ])
-        
-        # Garante que as colunas de texto não sejam nulas
-        text_cols = ['Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 'Status', 'Responsável']
-        for col in text_cols:
-            if col in df.columns:
-                df[col] = df[col].astype(str).replace('nan', '').fillna('')
-        
-        # Converte Prazo para data
-        if 'Prazo' in df.columns:
-            df['Prazo'] = pd.to_datetime(df['Prazo'], errors='coerce')
-        
-        # Garante que números sejam números
-        num_cols = ['Avanço', 'Alvo', 'Progresso (%)']
-        for col in num_cols:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
-                
-        return df
-    except Exception:
-        # Se a tabela não existir ainda, retorna vazio
-        return pd.DataFrame(columns=[
-            'Departamento', 'Objetivo', 'Resultado Chave (KR)', 'Tarefa', 
-            'Status', 'Responsável', 'Prazo', 'Avanço', 'Alvo', 'Progresso (%)'
-        ])
-
-def salvar_dados_sql(df):
-    """Salva o DataFrame no Supabase sobrescrevendo a tabela"""
+if db_url:
+    # Conexão Profissional (Render)
+    # Correção para o Render: postgres:// deve ser postgresql://
+    if db_url.startswith("postgres://"):
+        db_url = db_url.replace("postgres://", "postgresql://", 1)
+    engine = create_engine(db_url)
+    conn = engine
+else:
+    # Conexão Desenvolvimento (Streamlit Cloud/Local)
+    conn = st.connection("postgresql", type="sql")
     engine = conn.engine
+
+# --- 3. FUNÇÕES DE BANCO DE DADOS (MULTI-TENANT) ---
+
+def run_query(query, params=None):
+    """Executa query de forma compatível com ambos os métodos"""
+    if db_url:
+        with engine.connect() as connection:
+            return pd.read_sql(query, connection, params=params)
+    else:
+        # Adaptação para st.connection que usa :param
+        return conn.query(query, params=params, ttl=0)
+
+def carregar_dados_cliente(cliente_nome):
+    """Carrega APENAS dados da empresa do usuário logado"""
+    try:
+        # Filtra pelo cliente logado
+        query = "SELECT * FROM okrs WHERE cliente = :cli"
+        df = run_query(query, params={'cli': cliente_nome})
+        
+        # Estrutura padrão se vazio
+        colunas_padrao = [
+            'departamento', 'objetivo', 'kr', 'tarefa', 
+            'status', 'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente'
+        ]
+        
+        if df.empty:
+            return pd.DataFrame(columns=colunas_padrao)
+            
+        # Tratamento de Tipos
+        if 'prazo' in df.columns:
+            df['prazo'] = pd.to_datetime(df['prazo'], errors='coerce')
+            
+        cols_num = ['avanco', 'alvo', 'progresso_pct']
+        for c in cols_num:
+            if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+            
+        cols_txt = ['departamento', 'objetivo', 'kr', 'tarefa', 'status', 'responsavel']
+        for c in cols_txt:
+            if c in df.columns: df[c] = df[c].fillna('').astype(str)
+            
+        return df
+    except Exception as e:
+        st.error(f"Erro ao carregar: {e}")
+        return pd.DataFrame()
+
+def salvar_dados_cliente(df, cliente_nome):
+    """Salva dados deletando apenas os daquele cliente e reinsere"""
     df_save = df.copy()
-    # Removemos colunas internas do banco se existirem para evitar duplicidade
+    
+    # Limpeza
     if 'id' in df_save.columns: del df_save['id']
     if 'created_at' in df_save.columns: del df_save['created_at']
     
-    # Salva no banco (replace recria a tabela com as colunas certas)
-    df_save.to_sql('okrs', engine, if_exists='replace', index=False)
+    # Garante que a coluna cliente está correta (segurança)
+    df_save['cliente'] = cliente_nome
+    
+    # Transação Segura: Delete + Insert
+    with engine.begin() as connection:
+        connection.execute(text("DELETE FROM okrs WHERE cliente = :cli"), {"cli": cliente_nome})
+        df_save.to_sql('okrs', connection, if_exists='append', index=False)
 
-def carregar_departamentos():
-    if os.path.exists(DEPT_FILE):
-        try:
-            return pd.read_csv(DEPT_FILE)['Departamento'].tolist()
-        except:
-            pass 
-    padrao = ["Comercial", "Financeiro", "Operacional", "RH", "Tecnologia", "Marketing"]
-    pd.DataFrame(padrao, columns=['Departamento']).to_csv(DEPT_FILE, index=False)
-    return padrao
-
-def salvar_departamentos(lista_deptos):
-    pd.DataFrame(lista_deptos, columns=['Departamento']).to_csv(DEPT_FILE, index=False)
+def carregar_deptos_cliente():
+    # Para simplificar, mantemos fixo. No futuro, pode vir do banco também.
+    return ["Comercial", "Financeiro", "Operacional", "RH", "Tecnologia", "Marketing"]
 
 def calcular_progresso(row):
     try:
-        av = float(row['Avanço'])
-        al = float(row['Alvo'])
+        av = float(row['avanco'])
+        al = float(row['alvo'])
         if al > 0:
             return min(max(av / al, 0.0), 1.0)
         return 0.0
     except:
         return 0.0
 
-def converter_para_excel(df):
+def converter_excel(df):
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         df_exp = df.copy()
-        df_exp['Prazo'] = df_exp['Prazo'].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else '')
+        if 'prazo' in df_exp.columns:
+            df_exp['prazo'] = df_exp['prazo'].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else '')
         df_exp.to_excel(writer, index=False, sheet_name='OKRs')
     return output.getvalue()
 
-# --- 4. INICIALIZAÇÃO DA MEMÓRIA ---
+# --- 4. CONTROLE DE SESSÃO ---
+if 'user' not in st.session_state:
+    st.session_state['user'] = None
 if 'df_master' not in st.session_state:
-    st.session_state['df_master'] = carregar_dados_seguro()
-
-if 'password_correct' not in st.session_state:
-    st.session_state['password_correct'] = False
+    st.session_state['df_master'] = pd.DataFrame()
 
 # --- 5. TELA DE LOGIN ---
-def check_password():
-    if st.session_state["password_correct"]: return True
+def check_login():
+    if st.session_state['user']: return True
+    
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.title("Login")
+        st.markdown("## 🔐 Acesso ao Sistema")
+        usuario = st.text_input("Usuário")
         senha = st.text_input("Senha", type="password")
+        
         if st.button("Entrar"):
-            if senha == "admin123":
-                st.session_state["password_correct"] = True
+            # Busca usuário no banco
+            query = "SELECT * FROM users WHERE username = :usr AND password = :pwd"
+            # Nota: Em produção real, use hash para senhas!
+            df_user = run_query(query, params={'usr': usuario, 'pwd': senha})
+            
+            if not df_user.empty:
+                user_data = df_user.iloc[0].to_dict()
+                st.session_state['user'] = user_data
+                # Carrega dados IMEDIATAMENTE após login
+                st.session_state['df_master'] = carregar_dados_cliente(user_data['cliente'])
                 st.rerun()
             else:
-                st.error("Senha incorreta")
+                st.error("Usuário ou senha inválidos.")
     return False
 
-# --- 6. APLICAÇÃO PRINCIPAL ---
-if check_password():
-    st.title("Painel de OKRs")
-
+# --- 6. APLICAÇÃO ---
+if check_login():
+    user = st.session_state['user']
+    cliente_atual = user['cliente']
     df = st.session_state['df_master']
-    lista_deptos = carregar_departamentos()
+    lista_deptos = carregar_deptos_cliente()
 
     # --- MENU LATERAL ---
     with st.sidebar:
-        st.header("⚙️ Configurações")
+        # Cabeçalho Personalizado
+        st.markdown(f"### 🏢 {cliente_atual}")
+        st.caption(f"Olá, {user['name']}")
+        
+        if st.button("Sair"):
+            st.session_state['user'] = None
+            st.session_state['df_master'] = pd.DataFrame()
+            st.rerun()
+            
+        st.divider()
         
         with st.expander("Departamentos"):
             with st.form("add_dept"):
                 novo = st.text_input("Novo:")
                 if st.form_submit_button("Adicionar"):
                     if novo and novo not in lista_deptos:
-                        lista_deptos.append(novo)
-                        salvar_departamentos(lista_deptos)
-                        st.rerun()
-            rm_dept = st.selectbox("Remover:", ["..."] + lista_deptos)
-            if st.button("Remover"):
-                if rm_dept != "...":
-                    lista_deptos.remove(rm_dept)
-                    salvar_departamentos(lista_deptos)
-                    st.rerun()
+                        # Nota: Deptos ainda são locais/sessão neste exemplo
+                        pass 
+            st.info("Lista padrão carregada.")
 
         st.divider()
-        
-        st.subheader("Novo Objetivo")
+        st.markdown("### Novo Objetivo")
         with st.form("quick_add"):
             d = st.selectbox("Departamento", lista_deptos)
             o = st.text_input("Objetivo Macro")
-            if st.form_submit_button("Criar Objetivo"):
+            if st.form_submit_button("Criar"):
                 if o:
-                    # AJUSTE: Cria o Objetivo com KR vazio e Tarefa vazia
                     novo_okr = {
-                        'Departamento': d, 'Objetivo': o, 'Resultado Chave (KR)': '',
-                        'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
-                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': '', 'Responsável': ''
+                        'departamento': d, 'objetivo': o, 'kr': '',
+                        'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 'progresso_pct': 0.0,
+                        'prazo': pd.to_datetime(date.today()), 'tarefa': '', 'responsavel': '',
+                        'cliente': cliente_atual # CARIMBA O CLIENTE
                     }
                     df_novo = pd.concat([df, pd.DataFrame([novo_okr])], ignore_index=True)
                     st.session_state['df_master'] = df_novo
-                    salvar_dados_sql(df_novo) # Salva no SQL
+                    salvar_dados_cliente(df_novo, cliente_atual)
                     st.rerun()
                 else:
-                    st.warning("Digite um nome para o objetivo.")
+                    st.warning("Preencha o nome.")
 
     # --- ÁREA PRINCIPAL ---
+    st.title(f"Painel OKR")
+    
     if df.empty:
-        st.info("Comece criando um Objetivo no menu lateral.")
+        st.info(f"Bem-vindo, equipe {cliente_atual}. Comece criando um objetivo.")
     else:
-        depts = sorted(list(set(df['Departamento'].unique()) | set(lista_deptos)))
+        depts = sorted(list(set(df['departamento'].unique()) | set(lista_deptos)))
         abas = st.tabs(depts)
         
         for i, depto in enumerate(depts):
             with abas[i]:
-                df_d = df[df['Departamento'] == depto]
+                df_d = df[df['departamento'] == depto]
                 if df_d.empty:
                     st.caption("Sem dados.")
                     continue
                 
-                # --- HIERARQUIA 1: OBJETIVOS ---
-                objs = [x for x in df_d['Objetivo'].unique() if x]
+                # Objetivos
+                objs = [x for x in df_d['objetivo'].unique() if x]
                 for obj in objs:
-                    mask_obj = (df['Departamento'] == depto) & (df['Objetivo'] == obj)
+                    mask_obj = (df['departamento'] == depto) & (df['objetivo'] == obj)
                     
-                    # AJUSTE: Calcula média ignorando linhas onde KR está vazio (placeholders)
-                    mask_validos = mask_obj & (df['Resultado Chave (KR)'] != '')
-                    if not df[mask_validos].empty:
-                        prog_obj = df[mask_validos]['Progresso (%)'].mean()
+                    # Progresso
+                    mask_krs = mask_obj & (df['kr'] != '')
+                    if not df[mask_krs].empty:
+                        prog = df[mask_krs]['progresso_pct'].mean()
                     else:
-                        prog_obj = 0.0
-
-                    if pd.isna(prog_obj): prog_obj = 0.0
-                    prog_obj = max(0.0, min(1.0, float(prog_obj)))
+                        prog = 0.0
+                    prog = max(0.0, min(1.0, float(prog)))
                     
-                    label_obj = f"{obj}  | {int(prog_obj*100)}%"
-                    
-                    with st.expander(label_obj, expanded=True):
-                        
-                        c_edit_obj, c_del_obj = st.columns([5, 1])
-                        with c_edit_obj:
-                            new_name = st.text_input("Nome do Objetivo", value=obj, key=f"n_o_{depto}_{obj}", label_visibility="collapsed")
-                            if new_name != obj:
-                                st.session_state['df_master'].loc[mask_obj, 'Objetivo'] = new_name
-                                salvar_dados_sql(st.session_state['df_master']) # Salva no SQL
+                    with st.expander(f"{obj} | {int(prog*100)}%", expanded=True):
+                        # Edição do Título do Objetivo
+                        c1, c2 = st.columns([5,1])
+                        with c1:
+                            new_obj = st.text_input("Objetivo", value=obj, key=f"obj_{depto}_{obj}", label_visibility="collapsed")
+                            if new_obj != obj:
+                                st.session_state['df_master'].loc[mask_obj, 'objetivo'] = new_obj
+                                salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                 st.rerun()
-                        with c_del_obj:
-                            if st.button("🗑️", key=f"del_{depto}_{obj}", help="Excluir este Objetivo"):
+                        with c2:
+                            if st.button("🗑️", key=f"del_{depto}_{obj}"):
                                 st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
-                                salvar_dados_sql(st.session_state['df_master']) # Salva no SQL
+                                salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                 st.rerun()
-
-                        st.markdown("### Resultados Chave (KRs)")
-                        
-                        # --- HIERARQUIA 2: KRs ---
-                        krs = [x for x in df[mask_obj]['Resultado Chave (KR)'].unique() if x]
-                        
-                        if not krs:
-                            st.caption("Nenhum KR criado ainda. Adicione o primeiro abaixo.")
-
+                                
+                        # KRs
+                        krs = [x for x in df[mask_obj]['kr'].unique() if x]
                         for kr in krs:
-                            mask_kr = mask_obj & (df['Resultado Chave (KR)'] == kr)
-                            df_kr = df[mask_kr] 
+                            mask_kr = mask_obj & (df['kr'] == kr)
+                            df_kr = df[mask_kr]
+                            prog_kr = df_kr['progresso_pct'].mean()
                             
-                            prog_kr = df_kr['Progresso (%)'].mean()
-                            if pd.isna(prog_kr): prog_kr = 0.0
-                            prog_kr = max(0.0, min(1.0, float(prog_kr)))
-
-                            with st.container(border=True):
-                                c_title, c_bar = st.columns([3, 1])
+                            st.markdown(f"**KR: {kr}**")
+                            st.progress(prog_kr)
+                            
+                            col_cfg = {
+                                "progresso_pct": st.column_config.ProgressColumn("Progresso", format="%.0f%%", min_value=0, max_value=1),
+                                "status": st.column_config.SelectboxColumn("Status", options=OPCOES_STATUS, required=True),
+                                "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
+                                "departamento": None, "objetivo": None, "kr": None, "cliente": None
+                            }
+                            
+                            edited = st.data_editor(
+                                df_kr, 
+                                column_config=col_cfg, 
+                                use_container_width=True, 
+                                num_rows="dynamic", 
+                                key=f"edit_{depto}_{obj}_{kr}"
+                            )
+                            
+                            if not edited.equals(df_kr):
+                                edited['progresso_pct'] = edited.apply(calcular_progresso, axis=1)
+                                edited['departamento'] = depto
+                                edited['objetivo'] = obj
+                                edited['kr'] = kr
+                                edited['cliente'] = cliente_atual
                                 
-                                with c_title:
-                                    st.markdown(f"**KR:** {kr}")
-                                    new_kr = st.text_input("Editar nome do KR", value=kr, key=f"r_k_{depto}_{obj}_{kr}", label_visibility="collapsed")
-                                    if new_kr != kr:
-                                        st.session_state['df_master'].loc[mask_kr, 'Resultado Chave (KR)'] = new_kr
-                                        salvar_dados_sql(st.session_state['df_master']) # Salva no SQL
-                                        st.rerun()
+                                # Atualiza Master
+                                idxs = df_kr.index
+                                st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
+                                st.session_state['df_master'] = pd.concat([st.session_state['df_master'], edited], ignore_index=True)
                                 
-                                with c_bar:
-                                    st.progress(prog_kr, text=f"**{int(prog_kr*100)}%**")
+                                salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
+                                st.rerun()
                                 
-                                st.markdown("**Tarefas & Ações**")
-                                
-                                col_cfg = {
-                                    "Progresso (%)": st.column_config.ProgressColumn(format="%.0f%%", min_value=0, max_value=1),
-                                    "Status": st.column_config.SelectboxColumn(options=OPCOES_STATUS, required=True),
-                                    "Prazo": st.column_config.DateColumn(format="DD/MM/YYYY"),
-                                    "Departamento": None, "Objetivo": None, "Resultado Chave (KR)": None
-                                }
-                                
-                                unique_key = f"edit_{hash(depto + obj + kr)}"
-                                df_edit = st.data_editor(
-                                    df_kr, 
-                                    column_config=col_cfg, 
-                                    use_container_width=True, 
-                                    num_rows="dynamic",
-                                    key=unique_key
-                                )
-
-                                if not df_edit.equals(df_kr):
-                                    df_edit['Progresso (%)'] = df_edit.apply(calcular_progresso, axis=1)
-                                    df_edit['Departamento'] = depto
-                                    df_edit['Objetivo'] = obj
-                                    df_edit['Resultado Chave (KR)'] = kr
-                                    
-                                    idxs = df_kr.index
-                                    st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
-                                    st.session_state['df_master'] = pd.concat([st.session_state['df_master'], df_edit], ignore_index=True)
-                                    
-                                    st.session_state['df_master'] = st.session_state['df_master'].sort_values(
-                                        by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
-                                    ).reset_index(drop=True)
-                                    
-                                    salvar_dados_sql(st.session_state['df_master']) # Salva no SQL
-                                    st.rerun()
-
-                        st.markdown("")
+                        # Novo KR
                         with st.popover("Novo KR"):
-                            nk = st.text_input("Nome do KR", key=f"nk_{obj}")
-                            if st.button("Criar", key=f"bk_{obj}"):
+                            nk = st.text_input("Nome", key=f"new_kr_{obj}")
+                            if st.button("Criar", key=f"btn_new_kr_{obj}"):
                                 if nk:
                                     dummy = {
-                                        'Departamento': depto, 'Objetivo': obj, 'Resultado Chave (KR)': nk,
-                                        'Status': 'Não Iniciado', 'Avanço': 0.0, 'Alvo': 1.0, 'Progresso (%)': 0.0,
-                                        'Prazo': pd.to_datetime(date.today()), 'Tarefa': 'Nova Tarefa', 'Responsável': ''
+                                        'departamento': depto, 'objetivo': obj, 'kr': nk,
+                                        'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 
+                                        'progresso_pct': 0.0, 'prazo': pd.to_datetime(date.today()),
+                                        'tarefa': 'Nova Tarefa', 'responsavel': '', 'cliente': cliente_atual
                                     }
                                     df_novo = pd.concat([st.session_state['df_master'], pd.DataFrame([dummy])], ignore_index=True)
                                     st.session_state['df_master'] = df_novo
-                                    
-                                    st.session_state['df_master'] = st.session_state['df_master'].sort_values(
-                                        by=['Departamento', 'Objetivo', 'Resultado Chave (KR)']
-                                    ).reset_index(drop=True)
-                                    
-                                    salvar_dados_sql(df_novo) # Salva no SQL
+                                    salvar_dados_cliente(df_novo, cliente_atual)
                                     st.rerun()
-    
-    # --- RODAPÉ COM EXPORTAÇÃO ---
-    st.markdown("---")
-    with st.expander("Exportar Dados"):
-        st.dataframe(st.session_state['df_master'], use_container_width=True)
-        st.download_button(
-            "Baixar Excel Completo",
-            converter_para_excel(st.session_state['df_master']),
-            "okrs_imobanco.xlsx"
-        )
 
+    st.divider()
+    with st.expander("Exportar"):
+        st.download_button("Download Excel", converter_excel(df), "okrs.xlsx")
