@@ -305,3 +305,4 @@ if check_password():
             converter_para_excel(st.session_state['df_master']),
             "okrs_imobanco.xlsx"
         )
+
