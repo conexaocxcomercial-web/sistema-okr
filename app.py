@@ -15,7 +15,6 @@ db_url = os.getenv("DATABASE_URL")
 
 if db_url:
     # Conexão Profissional (Render)
-    # Correção para o Render: postgres:// deve ser postgresql://
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
     engine = create_engine(db_url)
@@ -30,17 +29,23 @@ else:
 def run_query(query, params=None):
     """Executa query de forma compatível com ambos os métodos"""
     if db_url:
+        # No Render, usamos engine.connect e pandas lê o objeto text() corretamente
         with engine.connect() as connection:
             return pd.read_sql(query, connection, params=params)
     else:
-        # Adaptação para st.connection que usa :param
-        return conn.query(query, params=params, ttl=0)
+        # No Local (st.connection), precisamos extrair a string se for objeto text
+        # ou passar direto. O st.connection usa :param nativo.
+        if hasattr(query, 'text'):
+            sql_str = query.text
+        else:
+            sql_str = str(query)
+        return conn.query(sql_str, params=params, ttl=0)
 
 def carregar_dados_cliente(cliente_nome):
     """Carrega APENAS dados da empresa do usuário logado"""
     try:
-        # Filtra pelo cliente logado
-        query = "SELECT * FROM okrs WHERE cliente = :cli"
+        # CORREÇÃO AQUI: Usamos text() para o SQL entender os parâmetros :cli
+        query = text("SELECT * FROM okrs WHERE cliente = :cli")
         df = run_query(query, params={'cli': cliente_nome})
         
         # Estrutura padrão se vazio
@@ -125,19 +130,23 @@ def check_login():
         senha = st.text_input("Senha", type="password")
         
         if st.button("Entrar"):
-            # Busca usuário no banco
-            query = "SELECT * FROM users WHERE username = :usr AND password = :pwd"
-            # Nota: Em produção real, use hash para senhas!
-            df_user = run_query(query, params={'usr': usuario, 'pwd': senha})
+            # CORREÇÃO AQUI: Usamos text() para envolver a query
+            query = text("SELECT * FROM users WHERE username = :usr AND password = :pwd")
             
-            if not df_user.empty:
-                user_data = df_user.iloc[0].to_dict()
-                st.session_state['user'] = user_data
-                # Carrega dados IMEDIATAMENTE após login
-                st.session_state['df_master'] = carregar_dados_cliente(user_data['cliente'])
-                st.rerun()
-            else:
-                st.error("Usuário ou senha inválidos.")
+            # Nota: Em produção real, use hash para senhas!
+            try:
+                df_user = run_query(query, params={'usr': usuario, 'pwd': senha})
+                
+                if not df_user.empty:
+                    user_data = df_user.iloc[0].to_dict()
+                    st.session_state['user'] = user_data
+                    # Carrega dados IMEDIATAMENTE após login
+                    st.session_state['df_master'] = carregar_dados_cliente(user_data['cliente'])
+                    st.rerun()
+                else:
+                    st.error("Usuário ou senha inválidos.")
+            except Exception as e:
+                st.error(f"Erro de conexão: {e}")
     return False
 
 # --- 6. APLICAÇÃO ---
@@ -164,9 +173,8 @@ if check_login():
             with st.form("add_dept"):
                 novo = st.text_input("Novo:")
                 if st.form_submit_button("Adicionar"):
-                    if novo and novo not in lista_deptos:
-                        # Nota: Deptos ainda são locais/sessão neste exemplo
-                        pass 
+                    # Aqui você poderia salvar no banco futuramente
+                    pass 
             st.info("Lista padrão carregada.")
 
         st.divider()
