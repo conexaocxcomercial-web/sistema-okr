@@ -19,6 +19,16 @@ CORES_STATUS = {
     "Não Iniciado": "#ff5a34"    # Laranja
 }
 
+# Cores específicas para o Farol de Prazos
+CORES_PRAZO = {
+    "Atrasado": "#ff5a34",         # Vermelho/Laranja Escuro
+    "Urgente (7 dias)": "#ff9f1c", # Laranja Vivo
+    "Atenção (30 dias)": "#ffd166",# Amarelo
+    "No Prazo": "#7371ff",         # Azul/Roxo
+    "Concluído": "#e0e0e0",        # Cinza Claro
+    "Sem Prazo": "#f0f2f6"         # Cinza muito claro
+}
+
 # --- 2. CONEXÃO HÍBRIDA ---
 db_url = os.getenv("DATABASE_URL")
 
@@ -77,6 +87,8 @@ def salvar_dados_cliente(df, cliente_nome):
     df_save = df.copy()
     if 'id' in df_save.columns: del df_save['id']
     if 'created_at' in df_save.columns: del df_save['created_at']
+    if 'classificacao_prazo' in df_save.columns: del df_save['classificacao_prazo'] # Não salva coluna calculada
+    if 'mes_ano' in df_save.columns: del df_save['mes_ano'] # Não salva coluna calculada
     
     df_save['cliente'] = cliente_nome
     with engine.begin() as connection:
@@ -111,6 +123,26 @@ def converter_excel(df):
         if 'prazo' in df_exp.columns: df_exp['prazo'] = df_exp['prazo'].apply(lambda x: x.strftime('%d/%m/%Y') if pd.notnull(x) else '')
         df_exp.to_excel(writer, index=False)
     return output.getvalue()
+
+# Lógica do Farol de Prazos
+def classificar_prazo(row):
+    if row['status'] == 'Concluído':
+        return "Concluído"
+    
+    if pd.isnull(row['prazo']):
+        return "Sem Prazo"
+        
+    hoje = pd.to_datetime(date.today())
+    delta = (row['prazo'] - hoje).days
+    
+    if delta < 0:
+        return "Atrasado"
+    elif delta <= 7:
+        return "Urgente (7 dias)"
+    elif delta <= 30:
+        return "Atenção (30 dias)"
+    else:
+        return "No Prazo"
 
 # --- 4. SESSÃO ---
 if 'user' not in st.session_state: st.session_state['user'] = None
@@ -198,46 +230,50 @@ if check_login():
         if df.empty:
             st.info("Cadastre objetivos e KRs para visualizar os gráficos.")
         else:
-            df_krs = df[df['kr'] != '']
+            df_krs = df[df['kr'] != ''].copy()
             
             if df_krs.empty:
                 st.warning("Adicione KRs para visualizar as métricas.")
             else:
-                # --- DADOS ---
+                # Prepara dados para os novos gráficos
+                df_krs['classificacao_prazo'] = df_krs.apply(classificar_prazo, axis=1)
+                
+                if 'prazo' in df_krs.columns and pd.api.types.is_datetime64_any_dtype(df_krs['prazo']):
+                    df_krs['mes_ano'] = df_krs['prazo'].dt.strftime('%Y-%m')
+                else:
+                    df_krs['mes_ano'] = "N/A"
+
+                # --- DADOS MACRO ---
                 total_krs = len(df_krs)
                 media_progresso = df_krs['progresso_pct'].mean()
                 
                 # =========================================================
-                # LINHA 1: KPIS (ALINHADOS NO TOPO)
+                # LINHA 1: KPIS (LIMPOS E ALINHADOS)
                 # =========================================================
                 k1, k2 = st.columns(2)
                 
                 with k1:
-                    # Cartão Visual Personalizado para Progresso
+                    # Estilo limpo: Sem background cinza, sem borda, sem barra de progresso
                     st.markdown(
                         f"""
-                        <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
-                            <h4 style="margin:0; color: #555;">% Progresso Global</h4>
-                            <h1 style="margin:0; font-size: 48px; color: #333;">{media_progresso*100:.1f}%</h1>
+                        <div style="text-align: center;">
+                            <h4 style="margin:0; color: #666; font-weight: normal;">% Progresso Global</h4>
+                            <h1 style="margin:0; font-size: 56px; color: #333; font-weight: bold;">{media_progresso*100:.1f}%</h1>
                         </div>
                         """, 
                         unsafe_allow_html=True
                     )
-                    st.progress(media_progresso) # Barra fina abaixo do card
 
                 with k2:
-                    # Cartão Visual Personalizado para Total de KRs
                     st.markdown(
                         f"""
-                        <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
-                            <h4 style="margin:0; color: #555;">Nº de KRs</h4>
-                            <h1 style="margin:0; font-size: 48px; color: #333;">{total_krs}</h1>
+                        <div style="text-align: center;">
+                            <h4 style="margin:0; color: #666; font-weight: normal;">Nº de KRs</h4>
+                            <h1 style="margin:0; font-size: 56px; color: #333; font-weight: bold;">{total_krs}</h1>
                         </div>
                         """, 
                         unsafe_allow_html=True
                     )
-                    # Barra invisível apenas para alinhar altura se necessário
-                    st.progress(0) 
 
                 st.divider()
 
@@ -246,7 +282,7 @@ if check_login():
                 # =========================================================
                 c_left, c_right = st.columns(2)
 
-                # --- GRÁFICO 1: PIZZA (STATUS GLOBAL) ---
+                # --- GRÁFICO 1: PIZZA ---
                 with c_left:
                     st.subheader("Status Global")
                     df_pie = df_krs['status'].value_counts().reset_index()
@@ -263,13 +299,13 @@ if check_login():
                     fig_pie.update_layout(
                         margin=dict(t=10, b=10, l=10, r=10),
                         legend=dict(orientation="h", y=-0.1),
-                        height=350, # Altura Fixa para alinhar
+                        height=350,
                         plot_bgcolor='rgba(0,0,0,0)',
                         paper_bgcolor='rgba(0,0,0,0)'
                     )
                     st.plotly_chart(fig_pie, use_container_width=True)
 
-                # --- GRÁFICO 2: BARRAS (POR DEPARTAMENTO) ---
+                # --- GRÁFICO 2: BARRAS DEPTO ---
                 with c_right:
                     st.subheader("Status por Departamento")
                     df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
@@ -288,7 +324,7 @@ if check_login():
                         yaxis_title=None,
                         legend_title_text='',
                         legend=dict(orientation="h", y=-0.1),
-                        height=350, # Altura Fixa (Igual à Pizza)
+                        height=350,
                         plot_bgcolor='rgba(0,0,0,0)',
                         paper_bgcolor='rgba(0,0,0,0)'
                     )
@@ -297,11 +333,9 @@ if check_login():
                 st.divider()
 
                 # =========================================================
-                # LINHA 3: GRÁFICO INFERIOR (POR RESPONSÁVEL)
+                # LINHA 3: RESPONSÁVEL
                 # =========================================================
                 st.subheader("Status por Responsável")
-                
-                # Trata responsáveis vazios para não quebrar o gráfico
                 df_resp = df_krs.copy()
                 df_resp['responsavel'] = df_resp['responsavel'].replace('', 'Não Atribuído')
                 
@@ -321,12 +355,74 @@ if check_login():
                     xaxis_visible=False,
                     yaxis_title=None,
                     legend_title_text='',
-                    legend=dict(orientation="h", y=-0.15), # Legenda bem embaixo
-                    height=400, # Um pouco maior pois pode ter muitos nomes
+                    legend=dict(orientation="h", y=-0.15),
+                    height=400,
                     plot_bgcolor='rgba(0,0,0,0)',
                     paper_bgcolor='rgba(0,0,0,0)'
                 )
                 st.plotly_chart(fig_resp, use_container_width=True)
+                
+                st.divider()
+
+                # =========================================================
+                # LINHA 4: RISCO E PRAZOS (NOVIDADES)
+                # =========================================================
+                col_farol, col_heat = st.columns(2)
+                
+                with col_farol:
+                    st.subheader("Farol de Prazos")
+                    st.caption("Visão de urgência baseada na data de entrega.")
+                    
+                    df_farol = df_krs['classificacao_prazo'].value_counts().reset_index()
+                    df_farol.columns = ['classificacao', 'contagem']
+                    
+                    # Ordenar lógica para o gráfico
+                    ordem_farol = ["Atrasado", "Urgente (7 dias)", "Atenção (30 dias)", "No Prazo", "Concluído", "Sem Prazo"]
+                    
+                    fig_farol = px.bar(
+                        df_farol, 
+                        y="classificacao", 
+                        x="contagem",
+                        color="classificacao",
+                        orientation='h',
+                        color_discrete_map=CORES_PRAZO,
+                        text_auto=True,
+                        category_orders={"classificacao": ordem_farol}
+                    )
+                    fig_farol.update_layout(
+                        xaxis_visible=False,
+                        yaxis_title=None,
+                        showlegend=False,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig_farol, use_container_width=True)
+
+                with col_heat:
+                    st.subheader("Mapa de Calor (Entregas)")
+                    st.caption("Concentração de entregas por Mês e Departamento.")
+                    
+                    if df_krs['mes_ano'].nunique() > 0:
+                        df_heat = df_krs.groupby(['departamento', 'mes_ano']).size().reset_index(name='qtd')
+                        
+                        fig_heat = px.density_heatmap(
+                            df_heat, 
+                            x="mes_ano", 
+                            y="departamento", 
+                            z="qtd", 
+                            color_continuous_scale="Blues",
+                            text_auto=True
+                        )
+                        fig_heat.update_layout(
+                            xaxis_title="Mês de Entrega",
+                            yaxis_title=None,
+                            coloraxis_showscale=False,
+                            plot_bgcolor='rgba(0,0,0,0)',
+                            paper_bgcolor='rgba(0,0,0,0)'
+                        )
+                        st.plotly_chart(fig_heat, use_container_width=True)
+                    else:
+                        st.info("Adicione datas de prazo para ver o mapa de calor.")
 
     # --- PÁGINA: PAINEL DE GESTÃO ---
     elif pagina == "Painel de Gestão":
@@ -384,7 +480,7 @@ if check_login():
                                     cfg = {
                                         "progresso_pct": st.column_config.ProgressColumn("Progresso", format="%.0f%%", min_value=0, max_value=1),
                                         "status": st.column_config.SelectboxColumn("Status", options=OPCOES, required=True),
-                                        "responsavel": st.column_config.TextColumn("Responsável"), # Adicionado explicitamente
+                                        "responsavel": st.column_config.TextColumn("Responsável"),
                                         "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
                                         "departamento": None, "objetivo": None, "kr": None, "cliente": None
                                     }
