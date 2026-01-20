@@ -6,12 +6,12 @@ from io import BytesIO
 from datetime import date
 from sqlalchemy import create_engine, text
 import plotly.express as px
-import plotly.graph_objects as go # Para o gráfico de Gauge (Velocímetro)
+import plotly.graph_objects as go
 
-# --- 1. CONFIGURAÇÃO INICIAL ---
+# --- 1. CONFIGURAÇÃO INICIAL (SEM EMOJIS) ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide")
 
-# --- DEFINIÇÃO DE CORES PERSONALIZADAS ---
+# --- DEFINIÇÃO DE CORES ---
 CORES_STATUS = {
     "Concluído": "#bef533",      # Verde Lima
     "Em Andamento": "#7371ff",   # Roxo/Azul
@@ -66,13 +66,20 @@ def carregar_dados_cliente(cliente_nome):
         cols_num = ['avanco', 'alvo', 'progresso_pct']
         for c in cols_num: 
             if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
+            
+        # LIMPEZA: Remove colunas técnicas que o usuário não precisa ver
+        if 'id' in df.columns: del df['id']
+        if 'created_at' in df.columns: del df['created_at']
+            
         return df
     except: return pd.DataFrame()
 
 def salvar_dados_cliente(df, cliente_nome):
     df_save = df.copy()
+    # Garante que não salvamos colunas técnicas duplicadas
     if 'id' in df_save.columns: del df_save['id']
     if 'created_at' in df_save.columns: del df_save['created_at']
+    
     df_save['cliente'] = cliente_nome
     with engine.begin() as connection:
         connection.execute(text("DELETE FROM okrs WHERE cliente = :cli"), {"cli": cliente_nome})
@@ -153,7 +160,7 @@ if check_login():
         st.markdown(f"### {cliente_atual}")
         st.caption(f"Olá, {user['name']}")
         
-        pagina = st.radio("Menu", ["Painel de Gestão", "Dashboard Analítico"])
+        pagina = st.radio("Menu", ["Painel de Gestão", "Dashboard"])
         
         if st.button("Sair"):
             st.session_state['user'] = None
@@ -186,14 +193,13 @@ if check_login():
                         salvar_dados_cliente(df_novo, cliente_atual)
                         st.rerun()
 
-    # --- PÁGINA: DASHBOARD ANALÍTICO ---
-    if pagina == "Dashboard Analítico":
-        st.title("📊 Dashboard Executivo")
+    # --- PÁGINA: DASHBOARD ---
+    if pagina == "Dashboard":
+        st.title("Dashboard")
         
         if df.empty:
             st.info("Cadastre objetivos e KRs para visualizar os gráficos.")
         else:
-            # Filtra apenas linhas com KRs reais
             df_krs = df[df['kr'] != '']
             
             if df_krs.empty:
@@ -208,11 +214,11 @@ if check_login():
                 
                 with col_kpi1:
                     st.metric("Total de KRs", total_krs)
-                    st.write("") # Espaçamento
+                    st.write("") 
                     st.metric("Progresso Global", f"{media_progresso*100:.1f}%")
 
                 with col_gauge:
-                    # Gráfico de Velocímetro para ilustrar o progresso
+                    # Gráfico de Velocímetro (Gauge)
                     fig_gauge = go.Figure(go.Indicator(
                         mode = "gauge+number",
                         value = media_progresso * 100,
@@ -220,12 +226,12 @@ if check_login():
                         title = {'text': "Atingimento Geral"},
                         gauge = {
                             'axis': {'range': [None, 100]},
-                            'bar': {'color': "#bef533"}, # Verde Lima no ponteiro
+                            'bar': {'color': "#bef533"}, # Verde Lima Sólido
                             'bgcolor': "white",
                             'steps': [
                                 {'range': [0, 50], 'color': "#ff5a34"}, # Vermelho
                                 {'range': [50, 80], 'color': "#ffd166"}, # Amarelo
-                                {'range': [80, 100], 'color': "#bef53333"} # Verde transparente
+                                {'range': [80, 100], 'color': "#bef533"} # Verde Lima Sólido (CORRIGIDO)
                             ],
                         }
                     ))
@@ -233,8 +239,7 @@ if check_login():
                     st.plotly_chart(fig_gauge, use_container_width=True)
 
                 with col_kpi2:
-                    # Espaço vazio ou outro indicador futuro
-                    st.info("Visão macro da performance da empresa.")
+                    st.info("Visão macro da performance.")
 
                 st.divider()
 
@@ -243,7 +248,6 @@ if check_login():
                 
                 with c1:
                     st.subheader("Status por Departamento")
-                    # Agrupa para contar status por departamento
                     df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
                     
                     fig_bar = px.bar(
@@ -252,7 +256,7 @@ if check_login():
                         y="contagem", 
                         color="status",
                         title="Volume de KRs por Status",
-                        color_discrete_map=CORES_STATUS, # SUAS CORES
+                        color_discrete_map=CORES_STATUS, 
                         text_auto=True
                     )
                     fig_bar.update_layout(xaxis_title="Departamento", yaxis_title="Qtd KRs")
@@ -260,7 +264,6 @@ if check_login():
                     
                 with c2:
                     st.subheader("Distribuição Global")
-                    # Contagem total por status
                     df_pie = df_krs['status'].value_counts().reset_index()
                     df_pie.columns = ['status', 'contagem']
                     
@@ -270,12 +273,12 @@ if check_login():
                         names='status',
                         title="Percentual por Status",
                         color='status',
-                        color_discrete_map=CORES_STATUS, # SUAS CORES
-                        hole=0.5 # Gráfico de Rosca
+                        color_discrete_map=CORES_STATUS,
+                        hole=0.5 
                     )
                     st.plotly_chart(fig_pie, use_container_width=True)
 
-    # --- PÁGINA: PAINEL DE GESTÃO (CRUD) ---
+    # --- PÁGINA: PAINEL DE GESTÃO ---
     elif pagina == "Painel de Gestão":
         st.title(f"Painel de Gestão")
         
@@ -326,7 +329,6 @@ if check_login():
                                     st.markdown(f"**KR: {kr}**")
                                     st.progress(df_kr['progresso_pct'].mean())
                                     
-                                    # Usa as mesmas chaves de cores para o Selectbox, se quiser consistência
                                     OPCOES = list(CORES_STATUS.keys()) 
                                     
                                     cfg = {
@@ -336,7 +338,16 @@ if check_login():
                                         "departamento": None, "objetivo": None, "kr": None, "cliente": None
                                     }
                                     
-                                    ed = st.data_editor(df_kr, column_config=cfg, use_container_width=True, num_rows="dynamic", key=f"e_{depto}_{obj}_{kr}")
+                                    # AQUI: hide_index=True remove a coluna numérica "1, 2, 3"
+                                    ed = st.data_editor(
+                                        df_kr, 
+                                        column_config=cfg, 
+                                        use_container_width=True, 
+                                        num_rows="dynamic", 
+                                        key=f"e_{depto}_{obj}_{kr}",
+                                        hide_index=True 
+                                    )
+                                    
                                     if not ed.equals(df_kr):
                                         ed['progresso_pct'] = ed.apply(calcular_progresso, axis=1)
                                         ed['departamento'] = depto; ed['objetivo'] = obj; ed['kr'] = kr; ed['cliente'] = cliente_atual
