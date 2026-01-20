@@ -6,7 +6,7 @@ from io import BytesIO
 from datetime import date
 from sqlalchemy import create_engine, text
 
-# --- 1. CONFIGURAÇÃO INICIAL (Limpo) ---
+# --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide")
 
 # --- 2. CONEXÃO HÍBRIDA ---
@@ -33,6 +33,22 @@ def run_query(query, params=None):
         else:
             sql_str = str(query)
         return conn.query(sql_str, params=params, ttl=0)
+
+def criar_usuario(usuario, senha, nome, cliente):
+    # 1. Verifica se usuário já existe
+    query_check = text("SELECT * FROM users WHERE username = :usr")
+    df_check = run_query(query_check, params={'usr': usuario})
+    
+    if not df_check.empty:
+        return False, "Usuário já existe. Escolha outro."
+    
+    # 2. Cria o usuário
+    with engine.begin() as connection:
+        connection.execute(
+            text("INSERT INTO users (username, password, name, cliente) VALUES (:usr, :pwd, :name, :cli)"),
+            {"usr": usuario, "pwd": senha, "name": nome, "cli": cliente}
+        )
+    return True, "Usuário criado com sucesso! Faça login."
 
 def carregar_dados_cliente(cliente_nome):
     try:
@@ -74,21 +90,16 @@ def salvar_dados_cliente(df, cliente_nome):
         connection.execute(text("DELETE FROM okrs WHERE cliente = :cli"), {"cli": cliente_nome})
         df_save.to_sql('okrs', connection, if_exists='append', index=False)
 
-# --- DEPARTAMENTOS (LÓGICA CORRIGIDA) ---
 def gerenciar_departamentos(cliente_nome):
     try:
-        # Busca apenas o que existe no banco. Se não tiver nada, retorna vazio.
         query = text("SELECT nome FROM departamentos WHERE cliente = :cli ORDER BY nome")
         df_dept = run_query(query, params={'cli': cliente_nome})
-        
-        lista = df_dept['nome'].tolist()
-        return lista
+        return df_dept['nome'].tolist()
     except:
         return []
 
 def adicionar_departamento(novo_nome, cliente_nome):
     if novo_nome:
-        # Usa engine.begin() para garantir o COMMIT imediato
         with engine.begin() as connection:
             connection.execute(
                 text("INSERT INTO departamentos (nome, cliente) VALUES (:nome, :cli)"),
@@ -127,30 +138,52 @@ if 'user' not in st.session_state:
 if 'df_master' not in st.session_state:
     st.session_state['df_master'] = pd.DataFrame()
 
-# --- 5. TELA DE LOGIN ---
+# --- 5. TELA DE LOGIN / CADASTRO ---
 def check_login():
     if st.session_state['user']: return True
     
     col1, col2, col3 = st.columns([1,2,1])
     with col2:
-        st.markdown("## Acesso ao Sistema")
-        usuario = st.text_input("Usuário")
-        senha = st.text_input("Senha", type="password")
+        st.markdown("## Sistema OKR")
         
-        if st.button("Entrar"):
-            query = text("SELECT * FROM users WHERE username = :usr AND password = :pwd")
-            try:
-                df_user = run_query(query, params={'usr': usuario, 'pwd': senha})
-                
-                if not df_user.empty:
-                    user_data = df_user.iloc[0].to_dict()
-                    st.session_state['user'] = user_data
-                    st.session_state['df_master'] = carregar_dados_cliente(user_data['cliente'])
-                    st.rerun()
+        # Abas para alternar entre Login e Cadastro
+        tab_login, tab_cadastro = st.tabs(["Entrar", "Criar Conta"])
+        
+        with tab_login:
+            usuario = st.text_input("Usuário")
+            senha = st.text_input("Senha", type="password")
+            
+            if st.button("Acessar", type="primary"):
+                query = text("SELECT * FROM users WHERE username = :usr AND password = :pwd")
+                try:
+                    df_user = run_query(query, params={'usr': usuario, 'pwd': senha})
+                    if not df_user.empty:
+                        user_data = df_user.iloc[0].to_dict()
+                        st.session_state['user'] = user_data
+                        st.session_state['df_master'] = carregar_dados_cliente(user_data['cliente'])
+                        st.rerun()
+                    else:
+                        st.error("Usuário ou senha inválidos.")
+                except Exception as e:
+                    st.error(f"Erro de conexão: {e}")
+
+        with tab_cadastro:
+            st.info("Cadastre sua empresa para começar.")
+            new_user = st.text_input("Novo Usuário (Login)")
+            new_pass = st.text_input("Nova Senha", type="password")
+            new_name = st.text_input("Seu Nome")
+            new_cli = st.text_input("Nome da Empresa")
+            
+            if st.button("Cadastrar"):
+                if new_user and new_pass and new_cli:
+                    sucesso, msg = criar_usuario(new_user, new_pass, new_name, new_cli)
+                    if sucesso:
+                        st.success(msg)
+                    else:
+                        st.error(msg)
                 else:
-                    st.error("Usuário ou senha inválidos.")
-            except Exception as e:
-                st.error(f"Erro de conexão: {e}")
+                    st.warning("Preencha todos os campos.")
+                    
     return False
 
 # --- 6. APLICAÇÃO ---
@@ -159,13 +192,12 @@ if check_login():
     cliente_atual = user['cliente']
     df = st.session_state['df_master']
     
-    # Carrega departamentos (pode vir vazio agora)
     lista_deptos = gerenciar_departamentos(cliente_atual)
 
     # --- MENU LATERAL ---
     with st.sidebar:
         st.markdown(f"### {cliente_atual}")
-        st.caption(f"Usuário: {user['name']}")
+        st.caption(f"Olá, {user['name']}")
         
         if st.button("Sair"):
             st.session_state['user'] = None
@@ -175,11 +207,9 @@ if check_login():
         st.divider()
         st.markdown("### Configurações")
         
-        # Gestão de Departamentos
         with st.expander("Departamentos", expanded=True):
             with st.form("add_dept"):
                 novo = st.text_input("Novo Departamento:")
-                # Botão de submit dentro do form
                 if st.form_submit_button("Adicionar"):
                     if novo:
                         if novo not in lista_deptos:
@@ -201,7 +231,6 @@ if check_login():
         st.divider()
         st.markdown("### Novo Objetivo")
         
-        # Só permite criar se tiver departamento
         if lista_deptos:
             with st.form("quick_add"):
                 d = st.selectbox("Departamento", lista_deptos)
@@ -221,28 +250,23 @@ if check_login():
                     else:
                         st.warning("Preencha o nome.")
         else:
-            st.warning("Cadastre um departamento acima para começar.")
+            st.warning("Cadastre um departamento para começar.")
 
     # --- ÁREA PRINCIPAL ---
     st.title(f"Painel OKR")
     
     if not lista_deptos:
-        st.info("Comece adicionando os departamentos da sua empresa no menu lateral.")
+        st.info("Bem-vindo! Comece adicionando os departamentos da sua empresa no menu lateral.")
     elif df.empty:
         st.info(f"Nenhum objetivo cadastrado.")
     else:
-        # Garante que departamentos usados nos OKRs apareçam mesmo se deletados da lista
-        depts_usados = set(df['departamento'].unique())
-        # Filtra vazios caso existam
-        depts_usados = {x for x in depts_usados if x and x != 'nan'}
-        
+        depts_usados = {x for x in set(df['departamento'].unique()) if x and x != 'nan'}
         todos_depts = sorted(list(set(lista_deptos) | depts_usados))
         
         if not todos_depts:
              st.info("Adicione um departamento.")
         else:
             abas = st.tabs(todos_depts)
-            
             for i, depto in enumerate(todos_depts):
                 with abas[i]:
                     df_d = df[df['departamento'] == depto]
@@ -250,11 +274,9 @@ if check_login():
                         st.caption("Nenhum objetivo neste departamento.")
                         continue
                     
-                    # Objetivos
                     objs = [x for x in df_d['objetivo'].unique() if x]
                     for obj in objs:
                         mask_obj = (df['departamento'] == depto) & (df['objetivo'] == obj)
-                        
                         mask_krs = mask_obj & (df['kr'] != '')
                         if not df[mask_krs].empty:
                             prog = df[mask_krs]['progresso_pct'].mean()
@@ -286,33 +308,24 @@ if check_login():
                                 st.progress(prog_kr)
                                 
                                 OPCOES_STATUS = ["Não Iniciado", "Em Andamento", "Pausado", "Concluído"]
-                                
                                 col_cfg = {
                                     "progresso_pct": st.column_config.ProgressColumn("Progresso", format="%.0f%%", min_value=0, max_value=1),
                                     "status": st.column_config.SelectboxColumn("Status", options=OPCOES_STATUS, required=True),
                                     "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
                                     "departamento": None, "objetivo": None, "kr": None, "cliente": None
                                 }
-                                
                                 edited = st.data_editor(
-                                    df_kr, 
-                                    column_config=col_cfg, 
-                                    use_container_width=True, 
-                                    num_rows="dynamic", 
-                                    key=f"edit_{depto}_{obj}_{kr}"
+                                    df_kr, column_config=col_cfg, use_container_width=True, num_rows="dynamic", key=f"edit_{depto}_{obj}_{kr}"
                                 )
-                                
                                 if not edited.equals(df_kr):
                                     edited['progresso_pct'] = edited.apply(calcular_progresso, axis=1)
                                     edited['departamento'] = depto
                                     edited['objetivo'] = obj
                                     edited['kr'] = kr
                                     edited['cliente'] = cliente_atual
-                                    
                                     idxs = df_kr.index
                                     st.session_state['df_master'] = st.session_state['df_master'].drop(idxs)
                                     st.session_state['df_master'] = pd.concat([st.session_state['df_master'], edited], ignore_index=True)
-                                    
                                     salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                     st.rerun()
                                     
