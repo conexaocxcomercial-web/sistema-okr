@@ -207,28 +207,48 @@ if check_login():
                 total_krs = len(df_krs)
                 media_progresso = df_krs['progresso_pct'].mean()
                 
-                # --- ESTRUTURA DO LAYOUT ---
-                # Divide a tela em: Esquerda (40%) e Direita (60%)
-                col_left, col_right = st.columns([2, 3])
+                # =========================================================
+                # LINHA 1: KPIS (ALINHADOS NO TOPO)
+                # =========================================================
+                k1, k2 = st.columns(2)
+                
+                with k1:
+                    # Cartão Visual Personalizado para Progresso
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
+                            <h4 style="margin:0; color: #555;">% Progresso Global</h4>
+                            <h1 style="margin:0; font-size: 48px; color: #333;">{media_progresso*100:.1f}%</h1>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+                    st.progress(media_progresso) # Barra fina abaixo do card
 
-                # --- COLUNA DA ESQUERDA (KPIs + Pizza) ---
-                with col_left:
-                    # Linha Superior: Progresso e Contador
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.markdown("**% Progresso Global**")
-                        st.markdown(f"<h1 style='font-size: 36px; margin: 0;'>{media_progresso*100:.1f}%</h1>", unsafe_allow_html=True)
-                        st.progress(media_progresso)
-                    
-                    with c2:
-                        st.markdown("<div style='text-align: center;'><b>Nº de KR's</b></div>", unsafe_allow_html=True)
-                        st.markdown(f"<h1 style='font-size: 48px; text-align: center; margin: 0;'>{total_krs}</h1>", unsafe_allow_html=True)
+                with k2:
+                    # Cartão Visual Personalizado para Total de KRs
+                    st.markdown(
+                        f"""
+                        <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; text-align: center;">
+                            <h4 style="margin:0; color: #555;">Nº de KRs</h4>
+                            <h1 style="margin:0; font-size: 48px; color: #333;">{total_krs}</h1>
+                        </div>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+                    # Barra invisível apenas para alinhar altura se necessário
+                    st.progress(0) 
 
-                    st.write("") # Espaço
-                    st.divider()
+                st.divider()
 
-                    # Gráfico de Pizza (Status)
-                    st.subheader("Status")
+                # =========================================================
+                # LINHA 2: GRÁFICOS LADO A LADO (PIZZA + DEPTO)
+                # =========================================================
+                c_left, c_right = st.columns(2)
+
+                # --- GRÁFICO 1: PIZZA (STATUS GLOBAL) ---
+                with c_left:
+                    st.subheader("Status Global")
                     df_pie = df_krs['status'].value_counts().reset_index()
                     df_pie.columns = ['status', 'contagem']
                     
@@ -239,21 +259,21 @@ if check_login():
                         color='status',
                         color_discrete_map=CORES_STATUS
                     )
-                    # Borda branca fina e legenda limpa
-                    fig_pie.update_traces(marker=dict(line=dict(color='#ffffff', width=1)))
+                    fig_pie.update_traces(marker=dict(line=dict(color='#ffffff', width=2)))
                     fig_pie.update_layout(
-                        margin=dict(t=20, b=20, l=20, r=20),
-                        legend=dict(orientation="h", y=-0.1) # Legenda embaixo
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        legend=dict(orientation="h", y=-0.1),
+                        height=350, # Altura Fixa para alinhar
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)'
                     )
                     st.plotly_chart(fig_pie, use_container_width=True)
 
-                # --- COLUNA DA DIREITA (Barras Empilhadas) ---
-                with col_right:
+                # --- GRÁFICO 2: BARRAS (POR DEPARTAMENTO) ---
+                with c_right:
                     st.subheader("Status por Departamento")
-                    
                     df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
                     
-                    # Gráfico Horizontal Empilhado
                     fig_bar = px.bar(
                         df_bar, 
                         y="departamento", 
@@ -263,17 +283,50 @@ if check_login():
                         color_discrete_map=CORES_STATUS,
                         text_auto=True
                     )
-                    
                     fig_bar.update_layout(
-                        xaxis_visible=False, # Remove eixo X
-                        yaxis_title=None,    # Remove título Y
-                        legend_title_text='', # Remove título legenda
-                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), # Legenda no topo
-                        height=500, # Gráfico mais alto para preencher a tela
+                        xaxis_visible=False,
+                        yaxis_title=None,
+                        legend_title_text='',
+                        legend=dict(orientation="h", y=-0.1),
+                        height=350, # Altura Fixa (Igual à Pizza)
                         plot_bgcolor='rgba(0,0,0,0)',
                         paper_bgcolor='rgba(0,0,0,0)'
                     )
                     st.plotly_chart(fig_bar, use_container_width=True)
+
+                st.divider()
+
+                # =========================================================
+                # LINHA 3: GRÁFICO INFERIOR (POR RESPONSÁVEL)
+                # =========================================================
+                st.subheader("Status por Responsável")
+                
+                # Trata responsáveis vazios para não quebrar o gráfico
+                df_resp = df_krs.copy()
+                df_resp['responsavel'] = df_resp['responsavel'].replace('', 'Não Atribuído')
+                
+                df_resp_group = df_resp.groupby(['responsavel', 'status']).size().reset_index(name='contagem')
+                
+                fig_resp = px.bar(
+                    df_resp_group, 
+                    y="responsavel", 
+                    x="contagem", 
+                    color="status",
+                    orientation='h',
+                    color_discrete_map=CORES_STATUS,
+                    text_auto=True
+                )
+                
+                fig_resp.update_layout(
+                    xaxis_visible=False,
+                    yaxis_title=None,
+                    legend_title_text='',
+                    legend=dict(orientation="h", y=-0.15), # Legenda bem embaixo
+                    height=400, # Um pouco maior pois pode ter muitos nomes
+                    plot_bgcolor='rgba(0,0,0,0)',
+                    paper_bgcolor='rgba(0,0,0,0)'
+                )
+                st.plotly_chart(fig_resp, use_container_width=True)
 
     # --- PÁGINA: PAINEL DE GESTÃO ---
     elif pagina == "Painel de Gestão":
@@ -331,6 +384,7 @@ if check_login():
                                     cfg = {
                                         "progresso_pct": st.column_config.ProgressColumn("Progresso", format="%.0f%%", min_value=0, max_value=1),
                                         "status": st.column_config.SelectboxColumn("Status", options=OPCOES, required=True),
+                                        "responsavel": st.column_config.TextColumn("Responsável"), # Adicionado explicitamente
                                         "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
                                         "departamento": None, "objetivo": None, "kr": None, "cliente": None
                                     }
