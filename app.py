@@ -8,15 +8,15 @@ from sqlalchemy import create_engine, text
 import plotly.express as px
 import plotly.graph_objects as go
 
-# --- 1. CONFIGURAÇÃO INICIAL (SEM EMOJIS) ---
+# --- 1. CONFIGURAÇÃO INICIAL ---
 st.set_page_config(page_title="Gestão de OKR", layout="wide")
 
 # --- DEFINIÇÃO DE CORES ---
 CORES_STATUS = {
-    "Concluído": "#bef533",      # Verde Lima
+    "Concluído": "#bef533",      # Verde Lima Neon
     "Em Andamento": "#7371ff",   # Roxo/Azul
     "Pausado": "#ffd166",        # Amarelo
-    "Não Iniciado": "#ff5a34"    # Laranja/Vermelho
+    "Não Iniciado": "#ff5a34"    # Laranja
 }
 
 # --- 2. CONEXÃO HÍBRIDA ---
@@ -67,7 +67,6 @@ def carregar_dados_cliente(cliente_nome):
         for c in cols_num: 
             if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
             
-        # LIMPEZA: Remove colunas técnicas que o usuário não precisa ver
         if 'id' in df.columns: del df['id']
         if 'created_at' in df.columns: del df['created_at']
             
@@ -76,7 +75,6 @@ def carregar_dados_cliente(cliente_nome):
 
 def salvar_dados_cliente(df, cliente_nome):
     df_save = df.copy()
-    # Garante que não salvamos colunas técnicas duplicadas
     if 'id' in df_save.columns: del df_save['id']
     if 'created_at' in df_save.columns: del df_save['created_at']
     
@@ -203,78 +201,107 @@ if check_login():
             df_krs = df[df['kr'] != '']
             
             if df_krs.empty:
-                st.warning("Você tem objetivos, mas nenhum KR cadastrado. Adicione KRs para ver métricas.")
+                st.warning("Adicione KRs para visualizar as métricas.")
             else:
-                # --- CÁLCULO DE KPIS ---
+                # --- DADOS ---
                 total_krs = len(df_krs)
                 media_progresso = df_krs['progresso_pct'].mean()
+                pct_display = int(media_progresso * 100)
                 
-                # --- LINHA 1: KPIS e GAUGE ---
-                col_kpi1, col_gauge, col_kpi2 = st.columns([1, 2, 1])
+                # --- VISUALIZAÇÃO DE TOPO (KPIs + Anel) ---
+                col_left, col_ring, col_right = st.columns([1, 2, 1])
                 
-                with col_kpi1:
+                with col_left:
                     st.metric("Total de KRs", total_krs)
-                    st.write("") 
-                    st.metric("Progresso Global", f"{media_progresso*100:.1f}%")
+                    st.write("")
+                    st.metric("Objetivos Macro", df['objetivo'].nunique())
 
-                with col_gauge:
-                    # Gráfico de Velocímetro (Gauge)
-                    fig_gauge = go.Figure(go.Indicator(
-                        mode = "gauge+number",
-                        value = media_progresso * 100,
-                        domain = {'x': [0, 1], 'y': [0, 1]},
-                        title = {'text': "Atingimento Geral"},
-                        gauge = {
-                            'axis': {'range': [None, 100]},
-                            'bar': {'color': "#bef533"}, # Verde Lima Sólido
-                            'bgcolor': "white",
-                            'steps': [
-                                {'range': [0, 50], 'color': "#ff5a34"}, # Vermelho
-                                {'range': [50, 80], 'color': "#ffd166"}, # Amarelo
-                                {'range': [80, 100], 'color': "#bef533"} # Verde Lima Sólido (CORRIGIDO)
-                            ],
-                        }
-                    ))
-                    fig_gauge.update_layout(height=250, margin=dict(l=20, r=20, t=50, b=20))
-                    st.plotly_chart(fig_gauge, use_container_width=True)
+                with col_ring:
+                    # GRÁFICO DE ANEL (Progress Ring Moderno)
+                    # Cria dois valores: O preenchido e o restante (vazio)
+                    val_preenchido = media_progresso
+                    val_vazio = 1.0 - media_progresso
+                    
+                    # Define a cor baseada no nível (para dar um charme)
+                    cor_anel = "#bef533" # Verde padrão
+                    if pct_display < 40: cor_anel = "#ff5a34" # Laranja se estiver baixo
+                    
+                    fig_ring = go.Figure(data=[go.Pie(
+                        values=[val_preenchido, val_vazio],
+                        hole=0.85, # Buraco grande para ficar fino
+                        marker_colors=[cor_anel, '#e6e6e6'], # Cor vs Cinza Claro
+                        direction='clockwise',
+                        sort=False,
+                        textinfo='none', # Sem texto nas fatias
+                        hoverinfo='none'
+                    )])
+                    
+                    # Texto no centro do anel
+                    fig_ring.update_layout(
+                        showlegend=False,
+                        annotations=[dict(text=f"{pct_display}%", x=0.5, y=0.5, font_size=40, showarrow=False, font_weight='bold')],
+                        margin=dict(l=20, r=20, t=20, b=20),
+                        height=200
+                    )
+                    st.plotly_chart(fig_ring, use_container_width=True)
+                    st.caption(f"<center>Atingimento Global</center>", unsafe_allow_html=True)
 
-                with col_kpi2:
-                    st.info("Visão macro da performance.")
+                with col_right:
+                    krs_concluidos = len(df_krs[df_krs['progresso_pct'] >= 1.0])
+                    st.metric("Concluídos", krs_concluidos)
+                    st.write("")
+                    krs_atrasados = len(df_krs[df_krs['status'] == 'Pausado']) # Exemplo
+                    st.metric("Pausados", krs_atrasados)
 
                 st.divider()
 
-                # --- LINHA 2: BARRAS E ROSCA ---
+                # --- GRÁFICOS INFERIORES ---
                 c1, c2 = st.columns([2, 1])
                 
                 with c1:
-                    st.subheader("Status por Departamento")
+                    st.subheader("Volume por Departamento")
                     df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
                     
+                    # BARRA HORIZONTAL (orientation='h')
                     fig_bar = px.bar(
                         df_bar, 
-                        x="departamento", 
-                        y="contagem", 
+                        y="departamento", # Y agora é a categoria
+                        x="contagem",     # X agora é o valor
                         color="status",
-                        title="Volume de KRs por Status",
+                        orientation='h',  # Mágica aqui
                         color_discrete_map=CORES_STATUS, 
                         text_auto=True
                     )
-                    fig_bar.update_layout(xaxis_title="Departamento", yaxis_title="Qtd KRs")
+                    # Limpeza visual do gráfico
+                    fig_bar.update_layout(
+                        xaxis_visible=False, # Remove números embaixo
+                        yaxis_title=None,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        legend_title_text=''
+                    )
                     st.plotly_chart(fig_bar, use_container_width=True)
                     
                 with c2:
-                    st.subheader("Distribuição Global")
+                    st.subheader("Status Global")
                     df_pie = df_krs['status'].value_counts().reset_index()
                     df_pie.columns = ['status', 'contagem']
                     
+                    # PIZZA (Sem hole)
                     fig_pie = px.pie(
                         df_pie, 
                         values='contagem', 
                         names='status',
-                        title="Percentual por Status",
                         color='status',
-                        color_discrete_map=CORES_STATUS,
-                        hole=0.5 
+                        color_discrete_map=CORES_STATUS
+                    )
+                    # Borda branca para destacar as fatias
+                    fig_pie.update_traces(marker=dict(line=dict(color='#ffffff', width=2)))
+                    fig_pie.update_layout(
+                        showlegend=True,
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        margin=dict(l=0, r=0, t=0, b=0)
                     )
                     st.plotly_chart(fig_pie, use_container_width=True)
 
@@ -338,7 +365,6 @@ if check_login():
                                         "departamento": None, "objetivo": None, "kr": None, "cliente": None
                                     }
                                     
-                                    # AQUI: hide_index=True remove a coluna numérica "1, 2, 3"
                                     ed = st.data_editor(
                                         df_kr, 
                                         column_config=cfg, 
