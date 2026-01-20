@@ -13,7 +13,7 @@ st.set_page_config(page_title="Gestão de OKR", layout="wide")
 
 # --- DEFINIÇÃO DE CORES ---
 CORES_STATUS = {
-    "Concluído": "#bef533",      # Verde Lima Neon
+    "Concluído": "#bef533",      # Verde Lima
     "Em Andamento": "#7371ff",   # Roxo/Azul
     "Pausado": "#ffd166",        # Amarelo
     "Não Iniciado": "#ff5a34"    # Laranja
@@ -206,88 +206,32 @@ if check_login():
                 # --- DADOS ---
                 total_krs = len(df_krs)
                 media_progresso = df_krs['progresso_pct'].mean()
-                pct_display = int(media_progresso * 100)
                 
-                # --- VISUALIZAÇÃO DE TOPO (KPIs + Anel) ---
-                col_left, col_ring, col_right = st.columns([1, 2, 1])
-                
+                # --- ESTRUTURA DO LAYOUT ---
+                # Divide a tela em: Esquerda (40%) e Direita (60%)
+                col_left, col_right = st.columns([2, 3])
+
+                # --- COLUNA DA ESQUERDA (KPIs + Pizza) ---
                 with col_left:
-                    st.metric("Total de KRs", total_krs)
-                    st.write("")
-                    st.metric("Objetivos Macro", df['objetivo'].nunique())
+                    # Linha Superior: Progresso e Contador
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        st.markdown("**% Progresso Global**")
+                        st.markdown(f"<h1 style='font-size: 36px; margin: 0;'>{media_progresso*100:.1f}%</h1>", unsafe_allow_html=True)
+                        st.progress(media_progresso)
+                    
+                    with c2:
+                        st.markdown("<div style='text-align: center;'><b>Nº de KR's</b></div>", unsafe_allow_html=True)
+                        st.markdown(f"<h1 style='font-size: 48px; text-align: center; margin: 0;'>{total_krs}</h1>", unsafe_allow_html=True)
 
-                with col_ring:
-                    # GRÁFICO DE ANEL (Progress Ring Moderno)
-                    # Cria dois valores: O preenchido e o restante (vazio)
-                    val_preenchido = media_progresso
-                    val_vazio = 1.0 - media_progresso
-                    
-                    # Define a cor baseada no nível (para dar um charme)
-                    cor_anel = "#bef533" # Verde padrão
-                    if pct_display < 40: cor_anel = "#ff5a34" # Laranja se estiver baixo
-                    
-                    fig_ring = go.Figure(data=[go.Pie(
-                        values=[val_preenchido, val_vazio],
-                        hole=0.85, # Buraco grande para ficar fino
-                        marker_colors=[cor_anel, '#e6e6e6'], # Cor vs Cinza Claro
-                        direction='clockwise',
-                        sort=False,
-                        textinfo='none', # Sem texto nas fatias
-                        hoverinfo='none'
-                    )])
-                    
-                    # Texto no centro do anel
-                    fig_ring.update_layout(
-                        showlegend=False,
-                        annotations=[dict(text=f"{pct_display}%", x=0.5, y=0.5, font_size=40, showarrow=False, font_weight='bold')],
-                        margin=dict(l=20, r=20, t=20, b=20),
-                        height=200
-                    )
-                    st.plotly_chart(fig_ring, use_container_width=True)
-                    st.caption(f"<center>Atingimento Global</center>", unsafe_allow_html=True)
+                    st.write("") # Espaço
+                    st.divider()
 
-                with col_right:
-                    krs_concluidos = len(df_krs[df_krs['progresso_pct'] >= 1.0])
-                    st.metric("Concluídos", krs_concluidos)
-                    st.write("")
-                    krs_atrasados = len(df_krs[df_krs['status'] == 'Pausado']) # Exemplo
-                    st.metric("Pausados", krs_atrasados)
-
-                st.divider()
-
-                # --- GRÁFICOS INFERIORES ---
-                c1, c2 = st.columns([2, 1])
-                
-                with c1:
-                    st.subheader("Volume por Departamento")
-                    df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
-                    
-                    # BARRA HORIZONTAL (orientation='h')
-                    fig_bar = px.bar(
-                        df_bar, 
-                        y="departamento", # Y agora é a categoria
-                        x="contagem",     # X agora é o valor
-                        color="status",
-                        orientation='h',  # Mágica aqui
-                        color_discrete_map=CORES_STATUS, 
-                        text_auto=True
-                    )
-                    # Limpeza visual do gráfico
-                    fig_bar.update_layout(
-                        xaxis_visible=False, # Remove números embaixo
-                        yaxis_title=None,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        legend_title_text=''
-                    )
-                    st.plotly_chart(fig_bar, use_container_width=True)
-                    
-                with c2:
-                    st.subheader("Status Global")
+                    # Gráfico de Pizza (Status)
+                    st.subheader("Status")
                     df_pie = df_krs['status'].value_counts().reset_index()
                     df_pie.columns = ['status', 'contagem']
                     
-                    # PIZZA (Sem hole)
                     fig_pie = px.pie(
                         df_pie, 
                         values='contagem', 
@@ -295,15 +239,41 @@ if check_login():
                         color='status',
                         color_discrete_map=CORES_STATUS
                     )
-                    # Borda branca para destacar as fatias
-                    fig_pie.update_traces(marker=dict(line=dict(color='#ffffff', width=2)))
+                    # Borda branca fina e legenda limpa
+                    fig_pie.update_traces(marker=dict(line=dict(color='#ffffff', width=1)))
                     fig_pie.update_layout(
-                        showlegend=True,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)',
-                        margin=dict(l=0, r=0, t=0, b=0)
+                        margin=dict(t=20, b=20, l=20, r=20),
+                        legend=dict(orientation="h", y=-0.1) # Legenda embaixo
                     )
                     st.plotly_chart(fig_pie, use_container_width=True)
+
+                # --- COLUNA DA DIREITA (Barras Empilhadas) ---
+                with col_right:
+                    st.subheader("Status por Departamento")
+                    
+                    df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
+                    
+                    # Gráfico Horizontal Empilhado
+                    fig_bar = px.bar(
+                        df_bar, 
+                        y="departamento", 
+                        x="contagem", 
+                        color="status",
+                        orientation='h',
+                        color_discrete_map=CORES_STATUS,
+                        text_auto=True
+                    )
+                    
+                    fig_bar.update_layout(
+                        xaxis_visible=False, # Remove eixo X
+                        yaxis_title=None,    # Remove título Y
+                        legend_title_text='', # Remove título legenda
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1), # Legenda no topo
+                        height=500, # Gráfico mais alto para preencher a tela
+                        plot_bgcolor='rgba(0,0,0,0)',
+                        paper_bgcolor='rgba(0,0,0,0)'
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True)
 
     # --- PÁGINA: PAINEL DE GESTÃO ---
     elif pagina == "Painel de Gestão":
