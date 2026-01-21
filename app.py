@@ -66,44 +66,45 @@ def criar_usuario(usuario, senha, nome, cliente):
 
 def carregar_dados_cliente(cliente_nome):
     try:
-        query = text("SELECT * FROM okrs WHERE cliente = :cli ORDER BY id ASC") # Ordenar por ID estabiliza a tela
+        # ORDENAR POR ID É CRUCIAL PARA A ESTABILIDADE DA TELA
+        query = text("SELECT * FROM okrs WHERE cliente = :cli ORDER BY id ASC")
         df = run_query(query, params={'cli': cliente_nome})
-        colunas = ['id', 'departamento', 'objetivo', 'kr', 'tarefa', 'status', 'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente']
         
-        if df.empty: 
-            return pd.DataFrame(columns=colunas)
+        # Garante todas as colunas necessárias
+        colunas_padrao = ['id', 'departamento', 'objetivo', 'kr', 'tarefa', 'status', 'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente']
         
+        if df.empty:
+            return pd.DataFrame(columns=colunas_padrao)
+            
+        # Tratamento de tipos
         if 'prazo' in df.columns: df['prazo'] = pd.to_datetime(df['prazo'], errors='coerce')
         cols_num = ['avanco', 'alvo', 'progresso_pct']
-        for c in cols_num: 
+        for c in cols_num:
             if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
             
-        # AJUSTE CRÍTICO: Não deletamos mais o ID aqui para manter o rastreio das linhas
+        # Não deletamos ID aqui. Precisamos dele para saber quem é quem.
         if 'created_at' in df.columns: del df['created_at']
             
         return df
-    except: return pd.DataFrame()
+    except Exception as e:
+        return pd.DataFrame()
 
 def salvar_dados_cliente(df, cliente_nome):
     df_save = df.copy()
     
-    # Limpeza de colunas calculadas antes de salvar
-    if 'created_at' in df_save.columns: del df_save['created_at']
-    if 'classificacao_prazo' in df_save.columns: del df_save['classificacao_prazo']
-    if 'mes_ano' in df_save.columns: del df_save['mes_ano']
+    # Limpeza antes de salvar
+    cols_remove = ['created_at', 'classificacao_prazo', 'mes_ano']
+    for c in cols_remove:
+        if c in df_save.columns: del df_save[c]
     
-    # Garante que o cliente está correto em todas as linhas
     df_save['cliente'] = cliente_nome
     
-    # Se ID for nulo (nova linha criada no editor), remove a coluna ID para o banco gerar um novo
-    # Se não, mantém o ID para tentar consistência (embora o Delete All vá gerar novos IDs, isso ajuda no debug local)
+    # Remove IDs de linhas novas (que vêm vazias ou None) para o banco criar novos
     if 'id' in df_save.columns:
-        # No método Delete/Insert, o ID antigo se perde e um novo é criado. 
-        # Para evitar erros de chave primária duplicada se tentássemos upsert, removemos o ID para o Insert em massa.
         del df_save['id'] 
     
+    # Transação Atômica (Deleta e Insere de uma vez)
     with engine.begin() as connection:
-        # Transação Atômica: Deleta e Insere no mesmo bloco para evitar "piscar" dados vazios
         connection.execute(text("DELETE FROM okrs WHERE cliente = :cli"), {"cli": cliente_nome})
         df_save.to_sql('okrs', connection, if_exists='append', index=False)
 
@@ -125,12 +126,10 @@ def remover_departamento(nome, cli):
 
 def calcular_progresso(row):
     try:
-        # Proteção contra divisão por zero e valores nulos
-        alvo = float(row['alvo']) if pd.notnull(row['alvo']) else 0.0
-        avanco = float(row['avanco']) if pd.notnull(row['avanco']) else 0.0
-        
-        if alvo > 0:
-            return min(max(avanco / alvo, 0.0), 1.0)
+        av = float(row.get('avanco', 0))
+        al = float(row.get('alvo', 0))
+        if al > 0:
+            return min(max(av / al, 0.0), 1.0)
         return 0.0
     except: return 0.0
 
@@ -227,7 +226,12 @@ if check_login():
                     d = st.selectbox("Depto", lista_deptos)
                     o = st.text_input("Objetivo")
                     if st.form_submit_button("Criar") and o:
-                        novo = {'departamento': d, 'objetivo': o, 'kr': 'Novo KR', 'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 'progresso_pct': 0.0, 'prazo': pd.to_datetime(date.today()), 'tarefa': '', 'responsavel': '', 'cliente': cliente_atual}
+                        # Cria linha inicial padrão
+                        novo = {
+                            'departamento': d, 'objetivo': o, 'kr': 'KR Inicial', 'tarefa': 'Tarefa 1',
+                            'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 'progresso_pct': 0.0, 
+                            'prazo': pd.to_datetime(date.today()), 'responsavel': '', 'cliente': cliente_atual
+                        }
                         df_novo = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
                         st.session_state['df_master'] = df_novo
                         salvar_dados_cliente(df_novo, cliente_atual)
@@ -240,7 +244,9 @@ if check_login():
         if df.empty:
             st.info("Cadastre objetivos e KRs para visualizar os gráficos.")
         else:
-            df_krs = df[df['kr'] != ''].copy()
+            # Filtra apenas linhas que tenham KR preenchido para os gráficos
+            df_krs = df[df['kr'].str.len() > 0].copy() if not df.empty else df
+            
             if df_krs.empty:
                 st.warning("Adicione KRs para visualizar as métricas.")
             else:
@@ -256,7 +262,7 @@ if check_login():
                 with k1:
                     st.markdown(f"<div style='text-align: center;'><h4 style='margin:0; color: #666; font-weight: normal;'>% Progresso Global</h4><h1 style='margin:0; font-size: 56px; color: #333; font-weight: bold;'>{media_progresso*100:.1f}%</h1></div>", unsafe_allow_html=True)
                 with k2:
-                    st.markdown(f"<div style='text-align: center;'><h4 style='margin:0; color: #666; font-weight: normal;'>Nº de KRs</h4><h1 style='margin:0; font-size: 56px; color: #333; font-weight: bold;'>{total_krs}</h1></div>", unsafe_allow_html=True)
+                    st.markdown(f"<div style='text-align: center;'><h4 style='margin:0; color: #666; font-weight: normal;'>Nº de Entregas (KRs/Tarefas)</h4><h1 style='margin:0; font-size: 56px; color: #333; font-weight: bold;'>{total_krs}</h1></div>", unsafe_allow_html=True)
 
                 st.divider()
                 c_left, c_right = st.columns(2)
@@ -304,7 +310,7 @@ if check_login():
                         fig_heat.update_layout(xaxis_title="Mês de Entrega", yaxis_title=None, coloraxis_showscale=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig_heat, use_container_width=True)
 
-    # --- PÁGINA: PAINEL DE GESTÃO (OTIMIZADO) ---
+    # --- PÁGINA: PAINEL DE GESTÃO (ESTRUTURA HIERÁRQUICA OTIMIZADA) ---
     elif pagina == "Painel de Gestão":
         st.title(f"Painel de Gestão")
         
@@ -323,87 +329,83 @@ if check_login():
                     with abas[i]:
                         df_d = df[df['departamento'] == depto]
                         if df_d.empty:
-                            st.caption("Este departamento está vazio.")
+                            st.caption("Sem dados.")
                             continue
                         
                         objs = [x for x in df_d['objetivo'].unique() if x]
                         for obj in objs:
-                            # Filtra dados deste objetivo específico
+                            # Filtra DADOS DO OBJETIVO
                             mask_obj = (df['departamento'] == depto) & (df['objetivo'] == obj)
                             df_obj = df[mask_obj].copy()
                             
-                            # Cálculo de progresso do objetivo (Média dos KRs válidos)
-                            df_krs_validos = df_obj[df_obj['kr'] != '']
-                            prog = df_krs_validos['progresso_pct'].mean() if not df_krs_validos.empty else 0.0
-                            prog = max(0.0, min(1.0, float(prog)))
+                            # Calcula progresso médio do objetivo
+                            prog = df_obj['progresso_pct'].mean() if not df_obj.empty else 0.0
                             
                             with st.expander(f"{obj} | {int(prog*100)}%", expanded=True):
-                                # Cabeçalho do Objetivo (Edição e Exclusão)
-                                c1, c2 = st.columns([5,1])
+                                # CONTROLE DO OBJETIVO
+                                c1, c2 = st.columns([4,1])
                                 with c1:
-                                    no = st.text_input("Nome do Objetivo", value=obj, key=f"obj_name_{depto}_{obj}", label_visibility="collapsed")
-                                    if no != obj and no:
-                                        st.session_state['df_master'].loc[mask_obj, 'objetivo'] = no
+                                    novo_nome = st.text_input("Objetivo:", value=obj, key=f"nome_{depto}_{obj}", label_visibility="collapsed")
+                                    if novo_nome != obj and novo_nome:
+                                        st.session_state['df_master'].loc[mask_obj, 'objetivo'] = novo_nome
                                         salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                         st.rerun()
                                 with c2:
-                                    if st.button("Excluir Objetivo", key=f"del_obj_{depto}_{obj}"):
-                                        # Remove todas as linhas desse objetivo
+                                    if st.button("Excluir Obj", key=f"del_{depto}_{obj}"):
                                         st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                         salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                         st.rerun()
-
-                                # --- GRID DE EDIÇÃO (A GRANDE MUDANÇA) ---
-                                # Em vez de um editor por KR, usamos um editor para TODOS os KRs deste objetivo.
-                                # Isso resolve o problema de performance e "piscar" a tela.
                                 
-                                # Filtra apenas KRs reais (com nome) para mostrar na tabela, mas permite adicionar novos
-                                if not df_obj.empty:
-                                    OPCOES = list(CORES_STATUS.keys())
+                                st.write("")
+                                st.caption("Lista de Resultados Chave (KRs) e Tarefas:")
+                                
+                                # --- A MÁGICA DE PERFORMANCE AQUI ---
+                                # Usamos UM ÚNICO data_editor para todos os KRs/Tarefas deste objetivo.
+                                # Isso permite adicionar múltiplas linhas (num_rows="dynamic")
+                                # sem quebrar o Streamlit com loops infinitos.
+                                
+                                OPCOES = list(CORES_STATUS.keys())
+                                cfg = {
+                                    "kr": st.column_config.TextColumn("KR (Resultado Chave)", width="medium", required=True),
+                                    "tarefa": st.column_config.TextColumn("Tarefa/Ação", width="large"), # Coluna de Tarefa Visível
+                                    "status": st.column_config.SelectboxColumn("Status", options=OPCOES, required=True, width="medium"),
+                                    "progresso_pct": st.column_config.ProgressColumn("%", format="%.0f%%", min_value=0, max_value=1),
+                                    "responsavel": st.column_config.TextColumn("Responsável"),
+                                    "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
+                                    "avanco": st.column_config.NumberColumn("Realizado"),
+                                    "alvo": st.column_config.NumberColumn("Meta"),
+                                    # Esconde colunas de sistema
+                                    "departamento": None, "objetivo": None, "cliente": None, "id": None
+                                }
+                                
+                                edited_df = st.data_editor(
+                                    df_obj,
+                                    column_config=cfg,
+                                    use_container_width=True,
+                                    num_rows="dynamic", # Permite adicionar KRs/Tarefas livremente
+                                    key=f"grid_{depto}_{obj}",
+                                    hide_index=True
+                                )
+                                
+                                # SE HOUVE MUDANÇA NA TABELA
+                                if not edited_df.equals(df_obj):
+                                    # 1. Recalcula progresso
+                                    edited_df['progresso_pct'] = edited_df.apply(calcular_progresso, axis=1)
                                     
-                                    cfg = {
-                                        "kr": st.column_config.TextColumn("Key Result (KR)", required=True),
-                                        "progresso_pct": st.column_config.ProgressColumn("Progresso", format="%.0f%%", min_value=0, max_value=1),
-                                        "status": st.column_config.SelectboxColumn("Status", options=OPCOES, required=True),
-                                        "responsavel": st.column_config.TextColumn("Responsável"),
-                                        "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
-                                        "avanco": st.column_config.NumberColumn("Avanço", min_value=0, step=1),
-                                        "alvo": st.column_config.NumberColumn("Meta (Alvo)", min_value=1, step=1),
-                                        # Ocultamos colunas de contexto pois já estamos dentro do bloco delas
-                                        "departamento": None, "objetivo": None, "cliente": None, "id": None 
-                                    }
+                                    # 2. Garante integridade dos dados (preenche vazios das novas linhas)
+                                    edited_df['departamento'] = depto
+                                    edited_df['objetivo'] = obj
+                                    edited_df['cliente'] = cliente_atual
+                                    if 'status' in edited_df.columns:
+                                        edited_df['status'] = edited_df['status'].fillna('Não Iniciado')
                                     
-                                    # Data Editor com num_rows="dynamic" permite adicionar/remover linhas aqui mesmo!
-                                    edited_df_obj = st.data_editor(
-                                        df_obj,
-                                        column_config=cfg,
-                                        use_container_width=True,
-                                        num_rows="dynamic", # Permite adicionar e remover KRs direto na tabela
-                                        key=f"editor_{depto}_{obj}",
-                                        hide_index=True
-                                    )
+                                    # 3. Atualiza o Mestre (Remove antigo -> Põe novo)
+                                    df_sem_obj = st.session_state['df_master'][~mask_obj]
+                                    st.session_state['df_master'] = pd.concat([df_sem_obj, edited_df], ignore_index=True)
                                     
-                                    # Se houve mudança
-                                    if not edited_df_obj.equals(df_obj):
-                                        # Recalcula progresso para todas as linhas editadas/novas
-                                        edited_df_obj['progresso_pct'] = edited_df_obj.apply(calcular_progresso, axis=1)
-                                        
-                                        # Preenche colunas obrigatórias para linhas novas (que vêm com NaN)
-                                        edited_df_obj['departamento'] = depto
-                                        edited_df_obj['objetivo'] = obj
-                                        edited_df_obj['cliente'] = cliente_atual
-                                        if 'status' in edited_df_obj.columns:
-                                            edited_df_obj['status'] = edited_df_obj['status'].fillna('Não Iniciado')
-                                        
-                                        # Atualiza o DataFrame Mestre
-                                        # 1. Remove as linhas antigas deste objetivo
-                                        df_master_limpo = st.session_state['df_master'][~mask_obj]
-                                        # 2. Adiciona as linhas novas/editadas deste objetivo
-                                        st.session_state['df_master'] = pd.concat([df_master_limpo, edited_df_obj], ignore_index=True)
-                                        
-                                        # Salva e recarrega
-                                        salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
-                                        st.rerun()
+                                    # 4. Salva no Banco e Recarrega
+                                    salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
+                                    st.rerun()
 
         st.divider()
         with st.expander("Exportar"):
