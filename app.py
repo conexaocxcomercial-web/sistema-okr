@@ -19,14 +19,13 @@ CORES_STATUS = {
     "Não Iniciado": "#ff5a34"    # Laranja
 }
 
-# Cores específicas para o Farol de Prazos
 CORES_PRAZO = {
-    "Atrasado": "#ff5a34",         # Vermelho/Laranja Escuro
-    "Urgente (7 dias)": "#ff9f1c", # Laranja Vivo
-    "Atenção (30 dias)": "#ffd166",# Amarelo
-    "No Prazo": "#7371ff",         # Azul/Roxo
-    "Concluído": "#e0e0e0",        # Cinza Claro
-    "Sem Prazo": "#f0f2f6"         # Cinza muito claro
+    "Atrasado": "#ff5a34",         
+    "Urgente (7 dias)": "#ff9f1c", 
+    "Atenção (30 dias)": "#ffd166",
+    "No Prazo": "#7371ff",         
+    "Concluído": "#e0e0e0",        
+    "Sem Prazo": "#f0f2f6"         
 }
 
 # --- 2. CONEXÃO HÍBRIDA ---
@@ -67,17 +66,19 @@ def criar_usuario(usuario, senha, nome, cliente):
 
 def carregar_dados_cliente(cliente_nome):
     try:
-        query = text("SELECT * FROM okrs WHERE cliente = :cli")
+        query = text("SELECT * FROM okrs WHERE cliente = :cli ORDER BY id ASC") # Ordenar por ID estabiliza a tela
         df = run_query(query, params={'cli': cliente_nome})
-        colunas = ['departamento', 'objetivo', 'kr', 'tarefa', 'status', 'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente']
-        if df.empty: return pd.DataFrame(columns=colunas)
+        colunas = ['id', 'departamento', 'objetivo', 'kr', 'tarefa', 'status', 'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente']
+        
+        if df.empty: 
+            return pd.DataFrame(columns=colunas)
         
         if 'prazo' in df.columns: df['prazo'] = pd.to_datetime(df['prazo'], errors='coerce')
         cols_num = ['avanco', 'alvo', 'progresso_pct']
         for c in cols_num: 
             if c in df.columns: df[c] = pd.to_numeric(df[c], errors='coerce').fillna(0.0)
             
-        if 'id' in df.columns: del df['id']
+        # AJUSTE CRÍTICO: Não deletamos mais o ID aqui para manter o rastreio das linhas
         if 'created_at' in df.columns: del df['created_at']
             
         return df
@@ -85,13 +86,24 @@ def carregar_dados_cliente(cliente_nome):
 
 def salvar_dados_cliente(df, cliente_nome):
     df_save = df.copy()
-    if 'id' in df_save.columns: del df_save['id']
-    if 'created_at' in df_save.columns: del df_save['created_at']
-    if 'classificacao_prazo' in df_save.columns: del df_save['classificacao_prazo'] # Não salva coluna calculada
-    if 'mes_ano' in df_save.columns: del df_save['mes_ano'] # Não salva coluna calculada
     
+    # Limpeza de colunas calculadas antes de salvar
+    if 'created_at' in df_save.columns: del df_save['created_at']
+    if 'classificacao_prazo' in df_save.columns: del df_save['classificacao_prazo']
+    if 'mes_ano' in df_save.columns: del df_save['mes_ano']
+    
+    # Garante que o cliente está correto em todas as linhas
     df_save['cliente'] = cliente_nome
+    
+    # Se ID for nulo (nova linha criada no editor), remove a coluna ID para o banco gerar um novo
+    # Se não, mantém o ID para tentar consistência (embora o Delete All vá gerar novos IDs, isso ajuda no debug local)
+    if 'id' in df_save.columns:
+        # No método Delete/Insert, o ID antigo se perde e um novo é criado. 
+        # Para evitar erros de chave primária duplicada se tentássemos upsert, removemos o ID para o Insert em massa.
+        del df_save['id'] 
+    
     with engine.begin() as connection:
+        # Transação Atômica: Deleta e Insere no mesmo bloco para evitar "piscar" dados vazios
         connection.execute(text("DELETE FROM okrs WHERE cliente = :cli"), {"cli": cliente_nome})
         df_save.to_sql('okrs', connection, if_exists='append', index=False)
 
@@ -113,7 +125,13 @@ def remover_departamento(nome, cli):
 
 def calcular_progresso(row):
     try:
-        return min(max(float(row['avanco']) / float(row['alvo']), 0.0), 1.0) if float(row['alvo']) > 0 else 0.0
+        # Proteção contra divisão por zero e valores nulos
+        alvo = float(row['alvo']) if pd.notnull(row['alvo']) else 0.0
+        avanco = float(row['avanco']) if pd.notnull(row['avanco']) else 0.0
+        
+        if alvo > 0:
+            return min(max(avanco / alvo, 0.0), 1.0)
+        return 0.0
     except: return 0.0
 
 def converter_excel(df):
@@ -124,25 +142,17 @@ def converter_excel(df):
         df_exp.to_excel(writer, index=False)
     return output.getvalue()
 
-# Lógica do Farol de Prazos
 def classificar_prazo(row):
-    if row['status'] == 'Concluído':
-        return "Concluído"
-    
-    if pd.isnull(row['prazo']):
-        return "Sem Prazo"
-        
-    hoje = pd.to_datetime(date.today())
-    delta = (row['prazo'] - hoje).days
-    
-    if delta < 0:
-        return "Atrasado"
-    elif delta <= 7:
-        return "Urgente (7 dias)"
-    elif delta <= 30:
-        return "Atenção (30 dias)"
-    else:
-        return "No Prazo"
+    if row.get('status') == 'Concluído': return "Concluído"
+    if pd.isnull(row.get('prazo')): return "Sem Prazo"
+    try:
+        hoje = pd.to_datetime(date.today())
+        delta = (row['prazo'] - hoje).days
+        if delta < 0: return "Atrasado"
+        elif delta <= 7: return "Urgente (7 dias)"
+        elif delta <= 30: return "Atenção (30 dias)"
+        else: return "No Prazo"
+    except: return "Sem Prazo"
 
 # --- 4. SESSÃO ---
 if 'user' not in st.session_state: st.session_state['user'] = None
@@ -217,7 +227,7 @@ if check_login():
                     d = st.selectbox("Depto", lista_deptos)
                     o = st.text_input("Objetivo")
                     if st.form_submit_button("Criar") and o:
-                        novo = {'departamento': d, 'objetivo': o, 'kr': '', 'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 'progresso_pct': 0.0, 'prazo': pd.to_datetime(date.today()), 'tarefa': '', 'responsavel': '', 'cliente': cliente_atual}
+                        novo = {'departamento': d, 'objetivo': o, 'kr': 'Novo KR', 'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 'progresso_pct': 0.0, 'prazo': pd.to_datetime(date.today()), 'tarefa': '', 'responsavel': '', 'cliente': cliente_atual}
                         df_novo = pd.concat([df, pd.DataFrame([novo])], ignore_index=True)
                         st.session_state['df_master'] = df_novo
                         salvar_dados_cliente(df_novo, cliente_atual)
@@ -231,200 +241,70 @@ if check_login():
             st.info("Cadastre objetivos e KRs para visualizar os gráficos.")
         else:
             df_krs = df[df['kr'] != ''].copy()
-            
             if df_krs.empty:
                 st.warning("Adicione KRs para visualizar as métricas.")
             else:
-                # Prepara dados para os novos gráficos
                 df_krs['classificacao_prazo'] = df_krs.apply(classificar_prazo, axis=1)
-                
                 if 'prazo' in df_krs.columns and pd.api.types.is_datetime64_any_dtype(df_krs['prazo']):
                     df_krs['mes_ano'] = df_krs['prazo'].dt.strftime('%Y-%m')
-                else:
-                    df_krs['mes_ano'] = "N/A"
+                else: df_krs['mes_ano'] = "N/A"
 
-                # --- DADOS MACRO ---
                 total_krs = len(df_krs)
                 media_progresso = df_krs['progresso_pct'].mean()
                 
-                # =========================================================
-                # LINHA 1: KPIS (LIMPOS E ALINHADOS)
-                # =========================================================
                 k1, k2 = st.columns(2)
-                
                 with k1:
-                    # Estilo limpo: Sem background cinza, sem borda, sem barra de progresso
-                    st.markdown(
-                        f"""
-                        <div style="text-align: center;">
-                            <h4 style="margin:0; color: #666; font-weight: normal;">% Progresso Global</h4>
-                            <h1 style="margin:0; font-size: 56px; color: #333; font-weight: bold;">{media_progresso*100:.1f}%</h1>
-                        </div>
-                        """, 
-                        unsafe_allow_html=True
-                    )
-
+                    st.markdown(f"<div style='text-align: center;'><h4 style='margin:0; color: #666; font-weight: normal;'>% Progresso Global</h4><h1 style='margin:0; font-size: 56px; color: #333; font-weight: bold;'>{media_progresso*100:.1f}%</h1></div>", unsafe_allow_html=True)
                 with k2:
-                    st.markdown(
-                        f"""
-                        <div style="text-align: center;">
-                            <h4 style="margin:0; color: #666; font-weight: normal;">Nº de KRs</h4>
-                            <h1 style="margin:0; font-size: 56px; color: #333; font-weight: bold;">{total_krs}</h1>
-                        </div>
-                        """, 
-                        unsafe_allow_html=True
-                    )
+                    st.markdown(f"<div style='text-align: center;'><h4 style='margin:0; color: #666; font-weight: normal;'>Nº de KRs</h4><h1 style='margin:0; font-size: 56px; color: #333; font-weight: bold;'>{total_krs}</h1></div>", unsafe_allow_html=True)
 
                 st.divider()
-
-                # =========================================================
-                # LINHA 2: GRÁFICOS LADO A LADO (PIZZA + DEPTO)
-                # =========================================================
                 c_left, c_right = st.columns(2)
-
-                # --- GRÁFICO 1: PIZZA ---
                 with c_left:
                     st.subheader("Status Global")
                     df_pie = df_krs['status'].value_counts().reset_index()
                     df_pie.columns = ['status', 'contagem']
-                    
-                    fig_pie = px.pie(
-                        df_pie, 
-                        values='contagem', 
-                        names='status',
-                        color='status',
-                        color_discrete_map=CORES_STATUS
-                    )
+                    fig_pie = px.pie(df_pie, values='contagem', names='status', color='status', color_discrete_map=CORES_STATUS)
                     fig_pie.update_traces(marker=dict(line=dict(color='#ffffff', width=2)))
-                    fig_pie.update_layout(
-                        margin=dict(t=10, b=10, l=10, r=10),
-                        legend=dict(orientation="h", y=-0.1),
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)'
-                    )
+                    fig_pie.update_layout(margin=dict(t=10, b=10, l=10, r=10), legend=dict(orientation="h", y=-0.1), height=350, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                     st.plotly_chart(fig_pie, use_container_width=True)
-
-                # --- GRÁFICO 2: BARRAS DEPTO ---
                 with c_right:
                     st.subheader("Status por Departamento")
                     df_bar = df_krs.groupby(['departamento', 'status']).size().reset_index(name='contagem')
-                    
-                    fig_bar = px.bar(
-                        df_bar, 
-                        y="departamento", 
-                        x="contagem", 
-                        color="status",
-                        orientation='h',
-                        color_discrete_map=CORES_STATUS,
-                        text_auto=True
-                    )
-                    fig_bar.update_layout(
-                        xaxis_visible=False,
-                        yaxis_title=None,
-                        legend_title_text='',
-                        legend=dict(orientation="h", y=-0.1),
-                        height=350,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)'
-                    )
+                    fig_bar = px.bar(df_bar, y="departamento", x="contagem", color="status", orientation='h', color_discrete_map=CORES_STATUS, text_auto=True)
+                    fig_bar.update_layout(xaxis_visible=False, yaxis_title=None, legend_title_text='', legend=dict(orientation="h", y=-0.1), height=350, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                     st.plotly_chart(fig_bar, use_container_width=True)
 
                 st.divider()
-
-                # =========================================================
-                # LINHA 3: RESPONSÁVEL
-                # =========================================================
                 st.subheader("Status por Responsável")
                 df_resp = df_krs.copy()
                 df_resp['responsavel'] = df_resp['responsavel'].replace('', 'Não Atribuído')
-                
                 df_resp_group = df_resp.groupby(['responsavel', 'status']).size().reset_index(name='contagem')
-                
-                fig_resp = px.bar(
-                    df_resp_group, 
-                    y="responsavel", 
-                    x="contagem", 
-                    color="status",
-                    orientation='h',
-                    color_discrete_map=CORES_STATUS,
-                    text_auto=True
-                )
-                
-                fig_resp.update_layout(
-                    xaxis_visible=False,
-                    yaxis_title=None,
-                    legend_title_text='',
-                    legend=dict(orientation="h", y=-0.15),
-                    height=400,
-                    plot_bgcolor='rgba(0,0,0,0)',
-                    paper_bgcolor='rgba(0,0,0,0)'
-                )
+                fig_resp = px.bar(df_resp_group, y="responsavel", x="contagem", color="status", orientation='h', color_discrete_map=CORES_STATUS, text_auto=True)
+                fig_resp.update_layout(xaxis_visible=False, yaxis_title=None, legend_title_text='', legend=dict(orientation="h", y=-0.15), height=400, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                 st.plotly_chart(fig_resp, use_container_width=True)
                 
                 st.divider()
-
-                # =========================================================
-                # LINHA 4: RISCO E PRAZOS (NOVIDADES)
-                # =========================================================
                 col_farol, col_heat = st.columns(2)
-                
                 with col_farol:
                     st.subheader("Farol de Prazos")
                     st.caption("Visão de urgência baseada na data de entrega.")
-                    
                     df_farol = df_krs['classificacao_prazo'].value_counts().reset_index()
                     df_farol.columns = ['classificacao', 'contagem']
-                    
-                    # Ordenar lógica para o gráfico
                     ordem_farol = ["Atrasado", "Urgente (7 dias)", "Atenção (30 dias)", "No Prazo", "Concluído", "Sem Prazo"]
-                    
-                    fig_farol = px.bar(
-                        df_farol, 
-                        y="classificacao", 
-                        x="contagem",
-                        color="classificacao",
-                        orientation='h',
-                        color_discrete_map=CORES_PRAZO,
-                        text_auto=True,
-                        category_orders={"classificacao": ordem_farol}
-                    )
-                    fig_farol.update_layout(
-                        xaxis_visible=False,
-                        yaxis_title=None,
-                        showlegend=False,
-                        plot_bgcolor='rgba(0,0,0,0)',
-                        paper_bgcolor='rgba(0,0,0,0)'
-                    )
+                    fig_farol = px.bar(df_farol, y="classificacao", x="contagem", color="classificacao", orientation='h', color_discrete_map=CORES_PRAZO, text_auto=True, category_orders={"classificacao": ordem_farol})
+                    fig_farol.update_layout(xaxis_visible=False, yaxis_title=None, showlegend=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                     st.plotly_chart(fig_farol, use_container_width=True)
-
                 with col_heat:
                     st.subheader("Mapa de Calor (Entregas)")
                     st.caption("Concentração de entregas por Mês e Departamento.")
-                    
                     if df_krs['mes_ano'].nunique() > 0:
                         df_heat = df_krs.groupby(['departamento', 'mes_ano']).size().reset_index(name='qtd')
-                        
-                        fig_heat = px.density_heatmap(
-                            df_heat, 
-                            x="mes_ano", 
-                            y="departamento", 
-                            z="qtd", 
-                            color_continuous_scale="Blues",
-                            text_auto=True
-                        )
-                        fig_heat.update_layout(
-                            xaxis_title="Mês de Entrega",
-                            yaxis_title=None,
-                            coloraxis_showscale=False,
-                            plot_bgcolor='rgba(0,0,0,0)',
-                            paper_bgcolor='rgba(0,0,0,0)'
-                        )
+                        fig_heat = px.density_heatmap(df_heat, x="mes_ano", y="departamento", z="qtd", color_continuous_scale="Blues", text_auto=True)
+                        fig_heat.update_layout(xaxis_title="Mês de Entrega", yaxis_title=None, coloraxis_showscale=False, plot_bgcolor='rgba(0,0,0,0)', paper_bgcolor='rgba(0,0,0,0)')
                         st.plotly_chart(fig_heat, use_container_width=True)
-                    else:
-                        st.info("Adicione datas de prazo para ver o mapa de calor.")
 
-    # --- PÁGINA: PAINEL DE GESTÃO ---
+    # --- PÁGINA: PAINEL DE GESTÃO (OTIMIZADO) ---
     elif pagina == "Painel de Gestão":
         st.title(f"Painel de Gestão")
         
@@ -443,69 +323,85 @@ if check_login():
                     with abas[i]:
                         df_d = df[df['departamento'] == depto]
                         if df_d.empty:
-                            st.caption("Vazio.")
+                            st.caption("Este departamento está vazio.")
                             continue
                         
                         objs = [x for x in df_d['objetivo'].unique() if x]
                         for obj in objs:
+                            # Filtra dados deste objetivo específico
                             mask_obj = (df['departamento'] == depto) & (df['objetivo'] == obj)
-                            mask_krs = mask_obj & (df['kr'] != '')
-                            prog = df[mask_krs]['progresso_pct'].mean() if not df[mask_krs].empty else 0.0
+                            df_obj = df[mask_obj].copy()
+                            
+                            # Cálculo de progresso do objetivo (Média dos KRs válidos)
+                            df_krs_validos = df_obj[df_obj['kr'] != '']
+                            prog = df_krs_validos['progresso_pct'].mean() if not df_krs_validos.empty else 0.0
                             prog = max(0.0, min(1.0, float(prog)))
                             
                             with st.expander(f"{obj} | {int(prog*100)}%", expanded=True):
+                                # Cabeçalho do Objetivo (Edição e Exclusão)
                                 c1, c2 = st.columns([5,1])
                                 with c1:
-                                    no = st.text_input("Objetivo", value=obj, key=f"o_{depto}_{obj}", label_visibility="collapsed")
-                                    if no != obj:
+                                    no = st.text_input("Nome do Objetivo", value=obj, key=f"obj_name_{depto}_{obj}", label_visibility="collapsed")
+                                    if no != obj and no:
                                         st.session_state['df_master'].loc[mask_obj, 'objetivo'] = no
                                         salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                         st.rerun()
                                 with c2:
-                                    if st.button("Excluir", key=f"d_{depto}_{obj}"):
+                                    if st.button("Excluir Objetivo", key=f"del_obj_{depto}_{obj}"):
+                                        # Remove todas as linhas desse objetivo
                                         st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                         salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                         st.rerun()
-                                        
-                                krs = [x for x in df[mask_obj]['kr'].unique() if x]
-                                for kr in krs:
-                                    mask_kr = mask_obj & (df['kr'] == kr)
-                                    df_kr = df[mask_kr]
-                                    
-                                    st.markdown(f"**KR: {kr}**")
-                                    st.progress(df_kr['progresso_pct'].mean())
-                                    
-                                    OPCOES = list(CORES_STATUS.keys()) 
+
+                                # --- GRID DE EDIÇÃO (A GRANDE MUDANÇA) ---
+                                # Em vez de um editor por KR, usamos um editor para TODOS os KRs deste objetivo.
+                                # Isso resolve o problema de performance e "piscar" a tela.
+                                
+                                # Filtra apenas KRs reais (com nome) para mostrar na tabela, mas permite adicionar novos
+                                if not df_obj.empty:
+                                    OPCOES = list(CORES_STATUS.keys())
                                     
                                     cfg = {
+                                        "kr": st.column_config.TextColumn("Key Result (KR)", required=True),
                                         "progresso_pct": st.column_config.ProgressColumn("Progresso", format="%.0f%%", min_value=0, max_value=1),
                                         "status": st.column_config.SelectboxColumn("Status", options=OPCOES, required=True),
                                         "responsavel": st.column_config.TextColumn("Responsável"),
                                         "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
-                                        "departamento": None, "objetivo": None, "kr": None, "cliente": None
+                                        "avanco": st.column_config.NumberColumn("Avanço", min_value=0, step=1),
+                                        "alvo": st.column_config.NumberColumn("Meta (Alvo)", min_value=1, step=1),
+                                        # Ocultamos colunas de contexto pois já estamos dentro do bloco delas
+                                        "departamento": None, "objetivo": None, "cliente": None, "id": None 
                                     }
                                     
-                                    ed = st.data_editor(
-                                        df_kr, 
-                                        column_config=cfg, 
-                                        use_container_width=True, 
-                                        num_rows="dynamic", 
-                                        key=f"e_{depto}_{obj}_{kr}",
-                                        hide_index=True 
+                                    # Data Editor com num_rows="dynamic" permite adicionar/remover linhas aqui mesmo!
+                                    edited_df_obj = st.data_editor(
+                                        df_obj,
+                                        column_config=cfg,
+                                        use_container_width=True,
+                                        num_rows="dynamic", # Permite adicionar e remover KRs direto na tabela
+                                        key=f"editor_{depto}_{obj}",
+                                        hide_index=True
                                     )
                                     
-                                    if not ed.equals(df_kr):
-                                        ed['progresso_pct'] = ed.apply(calcular_progresso, axis=1)
-                                        ed['departamento'] = depto; ed['objetivo'] = obj; ed['kr'] = kr; ed['cliente'] = cliente_atual
-                                        st.session_state['df_master'] = pd.concat([st.session_state['df_master'].drop(df_kr.index), ed], ignore_index=True)
-                                        salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
-                                        st.rerun()
+                                    # Se houve mudança
+                                    if not edited_df_obj.equals(df_obj):
+                                        # Recalcula progresso para todas as linhas editadas/novas
+                                        edited_df_obj['progresso_pct'] = edited_df_obj.apply(calcular_progresso, axis=1)
                                         
-                                with st.popover("Novo KR"):
-                                    nk = st.text_input("Nome", key=f"nk_{obj}")
-                                    if st.button("Salvar KR", key=f"bk_{obj}") and nk:
-                                        d = {'departamento': depto, 'objetivo': obj, 'kr': nk, 'status': 'Não Iniciado', 'avanco': 0.0, 'alvo': 1.0, 'progresso_pct': 0.0, 'prazo': pd.to_datetime(date.today()), 'tarefa': '', 'responsavel': '', 'cliente': cliente_atual}
-                                        st.session_state['df_master'] = pd.concat([st.session_state['df_master'], pd.DataFrame([d])], ignore_index=True)
+                                        # Preenche colunas obrigatórias para linhas novas (que vêm com NaN)
+                                        edited_df_obj['departamento'] = depto
+                                        edited_df_obj['objetivo'] = obj
+                                        edited_df_obj['cliente'] = cliente_atual
+                                        if 'status' in edited_df_obj.columns:
+                                            edited_df_obj['status'] = edited_df_obj['status'].fillna('Não Iniciado')
+                                        
+                                        # Atualiza o DataFrame Mestre
+                                        # 1. Remove as linhas antigas deste objetivo
+                                        df_master_limpo = st.session_state['df_master'][~mask_obj]
+                                        # 2. Adiciona as linhas novas/editadas deste objetivo
+                                        st.session_state['df_master'] = pd.concat([df_master_limpo, edited_df_obj], ignore_index=True)
+                                        
+                                        # Salva e recarrega
                                         salvar_dados_cliente(st.session_state['df_master'], cliente_atual)
                                         st.rerun()
 
