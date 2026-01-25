@@ -238,6 +238,8 @@ if 'needs_save' not in st.session_state:
     st.session_state['needs_save'] = False
 if 'last_edit_time' not in st.session_state:
     st.session_state['last_edit_time'] = time.time()
+if 'editor_keys' not in st.session_state:
+    st.session_state['editor_keys'] = {}  # Buffer para preservar edições
 
 # --- 6. TELA DE LOGIN ---
 def check_login():
@@ -300,8 +302,8 @@ if check_login():
 
     # --- MENU LATERAL ---
     with st.sidebar:
-        st.markdown(f"###  {cliente_atual}")
-        st.caption(f"  {user['name']}")
+        st.markdown(f"### 🏢 {cliente_atual}")
+        st.caption(f"👤 {user['name']}")
         
         # ✅ BOTÃO DE SALVAR MANUAL
         if st.session_state.get('needs_save', False):
@@ -328,15 +330,15 @@ if check_login():
             st.success("✅ Tudo salvo")
         
         st.divider()
-        pagina = st.radio("Menu", ["Painel de Gestão", "Dashboard"], label_visibility="collapsed")
+        pagina = st.radio("📋 Menu", ["Painel de Gestão", "Dashboard"], label_visibility="collapsed")
         
         st.divider()
-        if st.button("Sair", use_container_width=True):
+        if st.button("🚪 Sair", use_container_width=True):
             st.session_state.clear()
             st.rerun()
 
         if pagina == "Painel de Gestão":
-            with st.expander("Departamentos", expanded=False):
+            with st.expander("📁 Departamentos", expanded=False):
                 with st.form("add_dept"):
                     n = st.text_input("Novo Departamento:")
                     if st.form_submit_button("➕ Adicionar", use_container_width=True):
@@ -346,23 +348,23 @@ if check_login():
                 
                 if lista_deptos:
                     rm = st.selectbox("Remover:", lista_deptos)
-                    if st.button("Excluir", use_container_width=True):
+                    if st.button("🗑️ Excluir", use_container_width=True):
                         if rm:
                             remover_departamento(rm, cliente_atual)
                             st.rerun()
 
     # --- PÁGINA: DASHBOARD ---
     if pagina == "Dashboard":
-        st.title("Dashboard")
+        st.title("📊 Dashboard")
         
         if df.empty:
-            st.info("Cadastre objetivos e KRs no Painel de Gestão para visualizar métricas.")
+            st.info("📝 Cadastre objetivos e KRs no Painel de Gestão para visualizar métricas.")
         else:
             # ✅ USA CACHE - Só recalcula se o DataFrame mudar
             metricas = processar_metricas_dashboard(df)
             
             if metricas is None:
-                st.warning("Adicione KRs para visualizar as métricas.")
+                st.warning("⚠️ Adicione KRs para visualizar as métricas.")
             else:
                 df_krs = metricas['df_krs']
                 total_krs = metricas['total_krs']
@@ -522,11 +524,11 @@ if check_login():
                         )
                         st.plotly_chart(fig_heat, use_container_width=True)
                     else:
-                        st.info("Dados insuficientes para mapa de calor")
+                        st.info("📊 Dados insuficientes para mapa de calor")
 
     # --- PÁGINA: PAINEL DE GESTÃO ---
     elif pagina == "Painel de Gestão":
-        st.title("Painel de Gestão")
+        st.title("⚙️ Painel de Gestão")
         
         # Quick create
         if lista_deptos:
@@ -535,7 +537,7 @@ if check_login():
                 d_q = c1.selectbox("Departamento", lista_deptos)
                 o_q = c2.text_input("Novo Objetivo")
                 
-                if c3.form_submit_button("Criar", type="primary"):
+                if c3.form_submit_button("➕ Criar", type="primary"):
                     if o_q:
                         novo = {
                             'departamento': d_q,
@@ -561,16 +563,16 @@ if check_login():
         st.divider()
         
         if not lista_deptos:
-            st.info("Adicione departamentos no menu lateral para começar.")
+            st.info("📁 Adicione departamentos no menu lateral para começar.")
         elif df.empty:
-            st.info("Nenhum objetivo cadastrado ainda.")
+            st.info("📝 Nenhum objetivo cadastrado ainda.")
         else:
             # Preparar lista de departamentos
             depts_usados = {x for x in df['departamento'].unique() if x and str(x) != 'nan'}
             todos_depts = sorted(list(set(lista_deptos) | depts_usados))
             
             if not todos_depts:
-                st.info("Adicione um departamento no menu lateral.")
+                st.info("📁 Adicione um departamento no menu lateral.")
             else:
                 # Tabs por departamento
                 abas = st.tabs(todos_depts)
@@ -620,7 +622,15 @@ if check_login():
                                 
                                 for kr in krs:
                                     mask_kr = mask_obj & (df['kr'] == kr)
-                                    df_kr = df[mask_kr].copy()
+                                    
+                                    # ✅ BUFFER KEY: Identifica unicamente este editor
+                                    editor_key = f"ed_{depto}_{obj}_{kr}"
+                                    
+                                    # ✅ USA BUFFER SE EXISTIR, SENÃO USA DADOS DO BANCO
+                                    if editor_key in st.session_state['editor_keys']:
+                                        df_kr = st.session_state['editor_keys'][editor_key].copy()
+                                    else:
+                                        df_kr = df[mask_kr].copy()
                                     
                                     # Cabeçalho do KR
                                     st.markdown(f"**📊 KR: {kr}**")
@@ -660,19 +670,20 @@ if check_login():
                                         "id": None
                                     }
                                     
-                                    # ✅ EDITOR DE TAREFAS (SEM RERUN AUTOMÁTICO)
+                                    # ✅ EDITOR COM BUFFER (preserva edições)
                                     edited_kr = st.data_editor(
                                         df_kr,
                                         column_config=cfg,
                                         use_container_width=True,
                                         num_rows="dynamic",
-                                        key=f"ed_{depto}_{obj}_{kr}",
-                                        hide_index=True
+                                        key=editor_key,
+                                        hide_index=True,
+                                        disabled=False
                                     )
                                     
-                                    # ✅ DETECTAR MUDANÇAS SEM CAUSAR RERUN
+                                    # ✅ DETECTAR MUDANÇAS E SALVAR NO BUFFER
                                     if not edited_kr.equals(df_kr):
-                                        # ✅ CÁLCULO VETORIZADO (muito mais rápido)
+                                        # ✅ CÁLCULO VETORIZADO
                                         edited_kr['progresso_pct'] = calcular_progresso_vetorizado(edited_kr)
                                         
                                         # Garantir integridade
@@ -684,20 +695,23 @@ if check_login():
                                         if 'status' in edited_kr.columns:
                                             edited_kr['status'] = edited_kr['status'].fillna('Não Iniciado')
                                         
-                                        # ✅ ATUALIZAR MASTER SEM RERUN
-                                        df_sem_kr = st.session_state['df_master'].drop(df_kr.index)
+                                        # ✅ SALVAR NO BUFFER (preserva durante reruns)
+                                        st.session_state['editor_keys'][editor_key] = edited_kr.copy()
+                                        
+                                        # ✅ ATUALIZAR MASTER
+                                        df_original = df[mask_kr]
+                                        df_sem_kr = st.session_state['df_master'].drop(df_original.index)
                                         st.session_state['df_master'] = pd.concat(
                                             [df_sem_kr, edited_kr],
                                             ignore_index=True
                                         )
                                         
-                                        # ✅ MARCA PARA SALVAR MAS NÃO DÁ RERUN!
+                                        # ✅ MARCA PARA SALVAR
                                         st.session_state['needs_save'] = True
                                         st.session_state['last_edit_time'] = time.time()
-                                        # ❌ REMOVIDO: st.rerun() ← Isso causava a lentidão!
 
                                 # Adicionar novo KR
-                                with st.popover("Novo KR"):
+                                with st.popover("➕ Novo KR"):
                                     novo_kr_nome = st.text_input("Nome do KR:", key=f"new_kr_{depto}_{obj}")
                                     if st.button("Adicionar KR", key=f"btn_kr_{depto}_{obj}"):
                                         if novo_kr_nome:
@@ -725,9 +739,9 @@ if check_login():
         st.divider()
         
         # Exportar dados
-        with st.expander("Exportar Dados"):
+        with st.expander("📥 Exportar Dados"):
             st.download_button(
-                "Baixar Excel",
+                "⬇️ Baixar Excel",
                 converter_excel(df),
                 "okrs.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
