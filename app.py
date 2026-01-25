@@ -33,7 +33,7 @@ st.markdown("""
     }
     
     /* Titulos */
-    h1, h2, h3 {
+    h1, h2, h3, h4 {
         font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         color: #2c3e50;
         font-weight: 600;
@@ -192,7 +192,6 @@ def badge_status_html(texto, cor):
         font-weight: 600; 
         font-size: 11px; 
         border: 1px solid {cor};
-        margin-bottom: 5px;
         letter-spacing: 0.5px;
     '>
     {texto.upper()}
@@ -366,11 +365,10 @@ if check_login():
                 
                 st.markdown("---")
                 
-                # CRONOGRAMA DE GANTT (NOVIDADE)
+                # CRONOGRAMA DE GANTT
                 st.subheader("Cronograma de Entregas")
                 df_gantt = df_krs[df_krs['prazo'].notna()].copy()
                 if not df_gantt.empty:
-                    # Simula inicio para visualização (30 dias antes do prazo)
                     df_gantt['inicio'] = df_gantt['prazo'] - pd.to_timedelta(30, unit='D')
                     
                     fig_gantt = px.timeline(
@@ -408,10 +406,9 @@ if check_login():
     # --- PÁGINA: PAINEL DE GESTÃO ---
     elif pagina == "Painel de Gestao":
         
-        # MODO BUSCA GLOBAL (Se houver texto na sidebar)
+        # MODO BUSCA GLOBAL
         if termo_busca:
             st.subheader(f"Resultados da busca: '{termo_busca}'")
-            # Filtra DF
             mask_busca = df.apply(lambda row: row.astype(str).str.contains(termo_busca, case=False).any(), axis=1)
             df_busca = df[mask_busca]
             
@@ -525,14 +522,25 @@ if check_login():
                             status_kr = df_kr['status'].iloc[0] if not df_kr.empty else "Nao Iniciado"
                             cor_badge = CORES_STATUS.get(status_kr, "#ccc")
                             
-                            # Header do KR com Badge
-                            st.markdown(f"#### {kr} &nbsp; {badge_status_html(status_kr, cor_badge)}", unsafe_allow_html=True)
+                            # --- CORREÇÃO AQUI ---
+                            # Separação de Título e Badge em colunas para evitar conflito HTML
+                            c_kr_title, c_kr_badge = st.columns([4, 1])
+                            
+                            with c_kr_title:
+                                st.markdown(f"#### {kr}")
+                            
+                            with c_kr_badge:
+                                st.markdown(
+                                    f"<div style='text-align: right; margin-top: 10px;'>{badge_status_html(status_kr, cor_badge)}</div>", 
+                                    unsafe_allow_html=True
+                                )
+                            # ---------------------
+                            
                             st.progress(df_kr['progresso_pct'].mean(), text=f"{int(df_kr['progresso_pct'].mean()*100)}%")
                             
                             # Filtros e Ações do KR
                             c_tool1, c_tool2, c_tool3 = st.columns([3, 1, 1])
                             with c_tool2:
-                                # BOTÃO DUPLICAR KR (NOVIDADE)
                                 if st.button("DUPLICAR KR", key=f"dup_{obj_selecionado}_{kr}"):
                                     novo_df_kr = df_kr.copy()
                                     novo_df_kr['kr'] = f"{kr} (Copia)"
