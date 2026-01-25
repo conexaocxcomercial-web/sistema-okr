@@ -10,7 +10,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 
 # --- 1. CONFIGURAÇÃO INICIAL ---
-st.set_page_config(page_title="Gestão de OKR", layout="wide")
+st.set_page_config(page_title="OKR com Conexão", layout="wide")
 
 # --- DEFINIÇÃO DE CORES ---
 CORES_STATUS = {
@@ -247,7 +247,7 @@ def check_login():
     
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
-        st.markdown("## 🎯 Sistema OKR")
+        st.markdown("## Gestão de OKR")
         tab1, tab2 = st.tabs(["Entrar", "Criar Conta"])
         
         with tab1:
@@ -267,9 +267,9 @@ def check_login():
                         st.session_state['needs_save'] = False
                         st.rerun()
                     else:
-                        st.error("❌ Credenciais inválidas.")
+                        st.error("Credenciais inválidas.")
                 except Exception as e:
-                    st.error(f"❌ Erro: {e}")
+                    st.error(f"Erro: {e}")
         
         with tab2:
             nu = st.text_input("Novo Usuário")
@@ -306,16 +306,16 @@ if check_login():
         # ✅ BOTÃO DE SALVAR MANUAL
         if st.session_state.get('needs_save', False):
             tempo = int(time.time() - st.session_state['last_edit_time'])
-            st.warning(f"⚠️ Alterações não salvas ({tempo}s)")
+            st.warning(f"Alterações não salvas ({tempo}s)")
             
             col1, col2 = st.columns(2)
             with col1:
-                if st.button("💾 Salvar", type="primary", use_container_width=True):
+                if st.button("Salvar Edições", type="primary", use_container_width=True):
                     with st.spinner("Salvando..."):
                         if salvar_dados_no_banco(st.session_state['df_master'], cliente_atual):
                             st.session_state['needs_save'] = False
                             processar_metricas_dashboard.clear()  # Limpa cache
-                            st.success("✅ Salvo!")
+                            st.success("Salvo!")
                             time.sleep(0.5)
                             st.rerun()
             
@@ -325,7 +325,7 @@ if check_login():
                     st.session_state['needs_save'] = False
                     st.rerun()
         else:
-            st.success("✅ Tudo salvo")
+            st.success("Edições Salvas")
         
         st.divider()
         pagina = st.radio("Menu", ["Painel de Gestão", "Dashboard"], label_visibility="collapsed")
@@ -339,7 +339,7 @@ if check_login():
             with st.expander("Departamentos", expanded=False):
                 with st.form("add_dept"):
                     n = st.text_input("Novo Departamento:")
-                    if st.form_submit_button("➕ Adicionar", use_container_width=True):
+                    if st.form_submit_button("Adicionar", use_container_width=True):
                         if n and n not in lista_deptos:
                             adicionar_departamento(n, cliente_atual)
                             st.rerun()
@@ -592,7 +592,7 @@ if check_login():
                             df_obj_calc = df[mask_obj & (df['kr'].notna()) & (df['kr'] != '')]
                             prog_obj = df_obj_calc['progresso_pct'].mean() if not df_obj_calc.empty else 0.0
                             
-                            with st.expander(f"🎯 {obj} | {int(prog_obj*100)}%", expanded=True):
+                            with st.expander(f" {obj} | {int(prog_obj*100)}%", expanded=True):
                                 c1, c2 = st.columns([5, 1])
                                 
                                 with c1:
@@ -609,7 +609,7 @@ if check_login():
                                         st.rerun()
                                 
                                 with c2:
-                                    if st.button("🗑️", key=f"d_{depto}_{obj}", help="Excluir objetivo"):
+                                    if st.button("Excluir", key=f"d_{depto}_{obj}", help="Excluir objetivo"):
                                         st.session_state['df_master'] = st.session_state['df_master'][~mask_obj]
                                         st.session_state['needs_save'] = True
                                         st.session_state['last_edit_time'] = time.time()
@@ -623,7 +623,7 @@ if check_login():
                                     df_kr = df[mask_kr].copy()
                                     
                                     # Cabeçalho do KR
-                                    st.markdown(f"**📊 KR: {kr}**")
+                                    st.markdown(f"** KR: {kr}**")
                                     prog_kr = df_kr['progresso_pct'].mean()
                                     st.progress(prog_kr, text=f"{int(prog_kr*100)}%")
                                     
@@ -733,3 +733,4 @@ if check_login():
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True
             )
+
