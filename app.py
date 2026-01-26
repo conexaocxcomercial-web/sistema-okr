@@ -152,11 +152,24 @@ def remover_departamento(nome, cli):
 def calcular_progresso_vetorizado(df):
     """
     ✅ OTIMIZAÇÃO: Calcula progresso usando NumPy (vetorizado)
+    Com proteção contra colunas inexistentes (evita KeyError)
     """
+    # 1. Proteção: Garante que as colunas existam
+    if 'alvo' not in df.columns:
+        df['alvo'] = 1.0
+    if 'avanco' not in df.columns:
+        df['avanco'] = 0.0
+
+    # 2. Conversão forçada para números (trata nulos e textos vazios)
+    df['alvo'] = pd.to_numeric(df['alvo'], errors='coerce').fillna(1.0)
+    df['avanco'] = pd.to_numeric(df['avanco'], errors='coerce').fillna(0.0)
+
+    # 3. Cálculo seguro
     with np.errstate(divide='ignore', invalid='ignore'):
         alvo_safe = df['alvo'].replace(0, 1)  # Evita divisão por zero
         progresso = df['avanco'] / alvo_safe
         progresso = np.clip(progresso, 0, 1)  # Limita entre 0 e 1
+        
     return progresso
 
 def callback_atualizar_tarefas(key_editor, depto, obj, kr, cliente):
@@ -167,16 +180,26 @@ def callback_atualizar_tarefas(key_editor, depto, obj, kr, cliente):
     if key_editor in st.session_state:
         edited_df = st.session_state[key_editor]
 
+        # GARANTIA EXTRA: Se o usuário acabou de criar a linha, preenche colunas vitais
+        if 'alvo' not in edited_df.columns:
+             edited_df['alvo'] = 1.0
+        if 'avanco' not in edited_df.columns:
+             edited_df['avanco'] = 0.0
+
         # 1. Cálculo Vetorizado
         edited_df['progresso_pct'] = calcular_progresso_vetorizado(edited_df)
 
-        # 2. Garante integridade (preenche colunas ocultas)
+        # 2. Garante integridade (preenche colunas ocultas e metadados)
         edited_df['departamento'] = depto
         edited_df['objetivo'] = obj
         edited_df['kr'] = kr
         edited_df['cliente'] = cliente
+        
+        # Garante status padrão
         if 'status' in edited_df.columns:
             edited_df['status'] = edited_df['status'].fillna('Não Iniciado')
+        else:
+            edited_df['status'] = 'Não Iniciado'
 
         # 3. Atualiza o Master na memória
         df_master = st.session_state['df_master']
@@ -202,18 +225,27 @@ def classificar_prazo_vetorizado(df):
     """
     hoje = pd.to_datetime(date.today())
     
+    # Proteção contra coluna de prazo inexistente
+    if 'prazo' not in df.columns:
+        return pd.Series("Sem Prazo", index=df.index)
+
     # Inicializa com "Sem Prazo"
     classificacao = pd.Series("Sem Prazo", index=df.index)
     
-    # Concluídos
-    mask_concluido = df['status'] == 'Concluído'
-    classificacao[mask_concluido] = "Concluído"
+    # Proteção contra coluna status inexistente
+    if 'status' in df.columns:
+        mask_concluido = df['status'] == 'Concluído'
+        classificacao[mask_concluido] = "Concluído"
+    else:
+        mask_concluido = pd.Series(False, index=df.index)
     
     # Com prazo válido
-    mask_prazo = df['prazo'].notna() & ~mask_concluido
+    mask_prazo = pd.to_datetime(df['prazo'], errors='coerce').notna() & ~mask_concluido
     
     if mask_prazo.any():
-        delta = (df.loc[mask_prazo, 'prazo'] - hoje).dt.days
+        # Converte para datetime garantido
+        prazos = pd.to_datetime(df.loc[mask_prazo, 'prazo'])
+        delta = (prazos - hoje).dt.days
         
         classificacao.loc[mask_prazo & (delta < 0)] = "Atrasado"
         classificacao.loc[mask_prazo & (delta >= 0) & (delta <= 7)] = "Urgente (7 dias)"
@@ -230,6 +262,7 @@ def processar_metricas_dashboard(_df):
     if _df.empty:
         return None
     
+    # Filtra apenas linhas que são KRs
     df_krs = _df[_df['kr'].notna() & (_df['kr'] != '')].copy()
     
     if df_krs.empty:
@@ -238,6 +271,10 @@ def processar_metricas_dashboard(_df):
     # Cálculos vetorizados
     df_krs['classificacao_prazo'] = classificar_prazo_vetorizado(df_krs)
     
+    # Garante coluna progresso_pct
+    if 'progresso_pct' not in df_krs.columns:
+         df_krs['progresso_pct'] = calcular_progresso_vetorizado(df_krs)
+
     if 'prazo' in df_krs.columns and pd.api.types.is_datetime64_any_dtype(df_krs['prazo']):
         df_krs['mes_ano'] = df_krs['prazo'].dt.strftime('%Y-%m')
     else:
