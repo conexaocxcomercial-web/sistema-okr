@@ -148,104 +148,37 @@ def remover_departamento(nome, cli):
         )
     gerenciar_departamentos.clear()
 
-# --- 4. FUNÇÕES OTIMIZADAS (VETORIZADAS & CALLBACKS) ---
+# --- 4. FUNÇÕES OTIMIZADAS (VETORIZADAS) ---
 def calcular_progresso_vetorizado(df):
     """
     ✅ OTIMIZAÇÃO: Calcula progresso usando NumPy (vetorizado)
-    Com proteção contra colunas inexistentes (evita KeyError)
+    10x mais rápido que .apply()
     """
-    # 1. Proteção: Garante que as colunas existam
-    if 'alvo' not in df.columns:
-        df['alvo'] = 1.0
-    if 'avanco' not in df.columns:
-        df['avanco'] = 0.0
-
-    # 2. Conversão forçada para números (trata nulos e textos vazios)
-    df['alvo'] = pd.to_numeric(df['alvo'], errors='coerce').fillna(1.0)
-    df['avanco'] = pd.to_numeric(df['avanco'], errors='coerce').fillna(0.0)
-
-    # 3. Cálculo seguro
     with np.errstate(divide='ignore', invalid='ignore'):
         alvo_safe = df['alvo'].replace(0, 1)  # Evita divisão por zero
         progresso = df['avanco'] / alvo_safe
         progresso = np.clip(progresso, 0, 1)  # Limita entre 0 e 1
-        
     return progresso
-
-def callback_atualizar_tarefas(key_editor, depto, obj, kr, cliente):
-    """
-    ✅ OTIMIZAÇÃO: Callback para atualizar KR sem 'piscar' a tela.
-    Executa antes do re-render da página.
-    """
-    if key_editor in st.session_state:
-        edited_df = st.session_state[key_editor]
-
-        # GARANTIA EXTRA: Se o usuário acabou de criar a linha, preenche colunas vitais
-        if 'alvo' not in edited_df.columns:
-             edited_df['alvo'] = 1.0
-        if 'avanco' not in edited_df.columns:
-             edited_df['avanco'] = 0.0
-
-        # 1. Cálculo Vetorizado
-        edited_df['progresso_pct'] = calcular_progresso_vetorizado(edited_df)
-
-        # 2. Garante integridade (preenche colunas ocultas e metadados)
-        edited_df['departamento'] = depto
-        edited_df['objetivo'] = obj
-        edited_df['kr'] = kr
-        edited_df['cliente'] = cliente
-        
-        # Garante status padrão
-        if 'status' in edited_df.columns:
-            edited_df['status'] = edited_df['status'].fillna('Não Iniciado')
-        else:
-            edited_df['status'] = 'Não Iniciado'
-
-        # 3. Atualiza o Master na memória
-        df_master = st.session_state['df_master']
-        
-        # Remove versão antiga deste KR específico
-        mask_outros = ~((df_master['departamento'] == depto) & 
-                        (df_master['objetivo'] == obj) & 
-                        (df_master['kr'] == kr))
-        
-        # Concatena o restante com a versão editada
-        st.session_state['df_master'] = pd.concat(
-            [df_master[mask_outros], edited_df], 
-            ignore_index=True
-        )
-
-        # 4. Marca para salvar no banco
-        st.session_state['needs_save'] = True
-        st.session_state['last_edit_time'] = time.time()
 
 def classificar_prazo_vetorizado(df):
     """
     ✅ OTIMIZAÇÃO: Classifica prazos usando operações vetorizadas
+    Muito mais rápido que .apply()
     """
     hoje = pd.to_datetime(date.today())
     
-    # Proteção contra coluna de prazo inexistente
-    if 'prazo' not in df.columns:
-        return pd.Series("Sem Prazo", index=df.index)
-
     # Inicializa com "Sem Prazo"
     classificacao = pd.Series("Sem Prazo", index=df.index)
     
-    # Proteção contra coluna status inexistente
-    if 'status' in df.columns:
-        mask_concluido = df['status'] == 'Concluído'
-        classificacao[mask_concluido] = "Concluído"
-    else:
-        mask_concluido = pd.Series(False, index=df.index)
+    # Concluídos
+    mask_concluido = df['status'] == 'Concluído'
+    classificacao[mask_concluido] = "Concluído"
     
     # Com prazo válido
-    mask_prazo = pd.to_datetime(df['prazo'], errors='coerce').notna() & ~mask_concluido
+    mask_prazo = df['prazo'].notna() & ~mask_concluido
     
     if mask_prazo.any():
-        # Converte para datetime garantido
-        prazos = pd.to_datetime(df.loc[mask_prazo, 'prazo'])
-        delta = (prazos - hoje).dt.days
+        delta = (df.loc[mask_prazo, 'prazo'] - hoje).dt.days
         
         classificacao.loc[mask_prazo & (delta < 0)] = "Atrasado"
         classificacao.loc[mask_prazo & (delta >= 0) & (delta <= 7)] = "Urgente (7 dias)"
@@ -258,11 +191,11 @@ def classificar_prazo_vetorizado(df):
 def processar_metricas_dashboard(_df):
     """
     ✅ OTIMIZAÇÃO: Cache de métricas do dashboard
+    Só recalcula se o DataFrame mudar
     """
     if _df.empty:
         return None
     
-    # Filtra apenas linhas que são KRs
     df_krs = _df[_df['kr'].notna() & (_df['kr'] != '')].copy()
     
     if df_krs.empty:
@@ -271,10 +204,6 @@ def processar_metricas_dashboard(_df):
     # Cálculos vetorizados
     df_krs['classificacao_prazo'] = classificar_prazo_vetorizado(df_krs)
     
-    # Garante coluna progresso_pct
-    if 'progresso_pct' not in df_krs.columns:
-         df_krs['progresso_pct'] = calcular_progresso_vetorizado(df_krs)
-
     if 'prazo' in df_krs.columns and pd.api.types.is_datetime64_any_dtype(df_krs['prazo']):
         df_krs['mes_ano'] = df_krs['prazo'].dt.strftime('%Y-%m')
     else:
@@ -693,54 +622,79 @@ if check_login():
                                     mask_kr = mask_obj & (df['kr'] == kr)
                                     df_kr = df[mask_kr].copy()
                                     
-                                    # --- CABEÇALHO DO KR COM EDIÇÃO ---
-                                    col_kr_txt, col_kr_edit = st.columns([8, 1])
-                                    with col_kr_txt:
-                                        st.markdown(f"**KR: {kr}**")
-                                    with col_kr_edit:
-                                        # Botão discreto para editar nome do KR
-                                        with st.popover("✏️", help="Editar nome do KR"):
-                                            novo_nome_kr = st.text_input("Renomear:", value=kr, key=f"ren_{depto}_{obj}_{kr}")
-                                            if st.button("Salvar", key=f"btn_ren_{depto}_{obj}_{kr}"):
-                                                if novo_nome_kr and novo_nome_kr != kr:
-                                                    mask_rename = (
-                                                        (st.session_state['df_master']['departamento'] == depto) & 
-                                                        (st.session_state['df_master']['objetivo'] == obj) & 
-                                                        (st.session_state['df_master']['kr'] == kr)
-                                                    )
-                                                    st.session_state['df_master'].loc[mask_rename, 'kr'] = novo_nome_kr
-                                                    st.session_state['needs_save'] = True
-                                                    st.session_state['last_edit_time'] = time.time()
-                                                    st.rerun()
-                                    
+                                    # Cabeçalho do KR
+                                    st.markdown(f"** KR: {kr}**")
                                     prog_kr = df_kr['progresso_pct'].mean()
                                     st.progress(prog_kr, text=f"{int(prog_kr*100)}%")
                                     
                                     # Configuração do data_editor
                                     OPCOES = list(CORES_STATUS.keys())
                                     cfg = {
-                                        "tarefa": st.column_config.TextColumn("Tarefa", width="large", required=True),
-                                        "progresso_pct": st.column_config.ProgressColumn("%", format="%.0f%%", min_value=0, max_value=1),
-                                        "status": st.column_config.SelectboxColumn("Status", options=OPCOES, required=True),
+                                        "tarefa": st.column_config.TextColumn(
+                                            "Tarefa",
+                                            width="large",
+                                            required=True
+                                        ),
+                                        "progresso_pct": st.column_config.ProgressColumn(
+                                            "%",
+                                            format="%.0f%%",
+                                            min_value=0,
+                                            max_value=1
+                                        ),
+                                        "status": st.column_config.SelectboxColumn(
+                                            "Status",
+                                            options=OPCOES,
+                                            required=True
+                                        ),
                                         "responsavel": st.column_config.TextColumn("Responsável"),
-                                        "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
+                                        "prazo": st.column_config.DateColumn(
+                                            "Prazo",
+                                            format="DD/MM/YYYY"
+                                        ),
                                         "avanco": st.column_config.NumberColumn("Real"),
                                         "alvo": st.column_config.NumberColumn("Meta"),
-                                        "departamento": None, "objetivo": None, "kr": None, "cliente": None, "id": None
+                                        "departamento": None,
+                                        "objetivo": None,
+                                        "kr": None,
+                                        "cliente": None,
+                                        "id": None
                                     }
                                     
-                                    # ✅ EDITOR OTIMIZADO COM CALLBACK
-                                    key_editor = f"ed_{depto}_{obj}_{kr}"
-                                    st.data_editor(
+                                    # ✅ EDITOR DE TAREFAS (SEM RERUN AUTOMÁTICO)
+                                    edited_kr = st.data_editor(
                                         df_kr,
                                         column_config=cfg,
                                         use_container_width=True,
                                         num_rows="dynamic",
-                                        key=key_editor,
-                                        hide_index=True,
-                                        on_change=callback_atualizar_tarefas,  # Callback lida com a atualização
-                                        args=(key_editor, depto, obj, kr, cliente_atual)
+                                        key=f"ed_{depto}_{obj}_{kr}",
+                                        hide_index=True
                                     )
+                                    
+                                    # ✅ DETECTAR MUDANÇAS SEM CAUSAR RERUN
+                                    if not edited_kr.equals(df_kr):
+                                        # ✅ CÁLCULO VETORIZADO (muito mais rápido)
+                                        edited_kr['progresso_pct'] = calcular_progresso_vetorizado(edited_kr)
+                                        
+                                        # Garantir integridade
+                                        edited_kr['departamento'] = depto
+                                        edited_kr['objetivo'] = obj
+                                        edited_kr['kr'] = kr
+                                        edited_kr['cliente'] = cliente_atual
+                                        
+                                        if 'status' in edited_kr.columns:
+                                            edited_kr['status'] = edited_kr['status'].fillna('Não Iniciado')
+                                        
+                                        # ✅ ATUALIZAR MASTER SEM RERUN
+                                        df_sem_kr = st.session_state['df_master'].drop(df_kr.index)
+                                        st.session_state['df_master'] = pd.concat(
+                                            [df_sem_kr, edited_kr],
+                                            ignore_index=True
+                                        )
+                                        
+                                        # ✅ MARCA PARA SALVAR MAS NÃO DÁ RERUN!
+                                        st.session_state['needs_save'] = True
+                                        st.session_state['last_edit_time'] = time.time()
+                                        # ❌ REMOVIDO: st.rerun() ← Isso causava a lentidão!
 
                                 # Adicionar novo KR
                                 with st.popover("Novo KR"):
