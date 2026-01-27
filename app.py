@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import os
 import time
+import hashlib
 from io import BytesIO
 from datetime import date, datetime
 from sqlalchemy import create_engine, text
@@ -19,7 +20,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Estilização CSS customizada para UI SaaS
+# Estilização CSS customizada
 st.markdown("""
     <style>
     .main { background-color: #f8f9fa; }
@@ -63,7 +64,6 @@ CORES_PRAZO = {
 
 @st.cache_resource
 def get_engine():
-    """Gerencia a conexão com o banco de dados com suporte a Heroku/Render"""
     db_url = os.getenv("DATABASE_URL")
     if db_url and db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
@@ -78,8 +78,10 @@ def get_engine():
 
 engine = get_engine()
 
+def hash_password(password):
+    return hashlib.sha256(str.encode(password)).hexdigest()
+
 def run_query(query, params=None, is_select=True):
-    """Abstração segura para execução de queries"""
     try:
         with engine.connect() as conn:
             if is_select:
@@ -93,19 +95,18 @@ def run_query(query, params=None, is_select=True):
         return None
 
 # ==========================================
-# 3. LÓGICA DE NEGÓCIO E PROCESSAMENTO
+# 3. LÓGICA DE NEGÓCIO
 # ==========================================
 
 def carregar_dados_cliente(cliente_nome):
-    """Carrega e tipa os dados do cliente de forma robusta"""
     query = "SELECT * FROM okrs WHERE cliente = :cli ORDER BY id ASC"
     df = run_query(query, params={'cli': cliente_nome})
     
     if df is None or df.empty:
-        return pd.DataFrame(columns=['id', 'departamento', 'objetivo', 'kr', 'tarefa', 'status', 
+        # Garante que created_at exista no dataframe vazio para evitar erro se for referenciado
+        return pd.DataFrame(columns=['id', 'created_at', 'departamento', 'objetivo', 'kr', 'tarefa', 'status', 
                                    'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente'])
     
-    # Normalização de tipos
     if 'prazo' in df.columns:
         df['prazo'] = pd.to_datetime(df['prazo'], errors='coerce')
     
@@ -116,11 +117,10 @@ def carregar_dados_cliente(cliente_nome):
     return df
 
 def salvar_dados_batch(df, cliente_nome):
-    """Salva dados usando transação atômica para evitar inconsistência"""
     try:
         df_save = df.copy()
-        # Limpeza de colunas auxiliares/calculadas
-        cols_to_drop = ['classificacao_prazo', 'mes_ano', 'id']
+        # Removemos created_at aqui para não tentar reinserir (o banco gera automático se for novo)
+        cols_to_drop = ['classificacao_prazo', 'mes_ano', 'id', 'created_at']
         df_save = df_save.drop(columns=[c for c in cols_to_drop if c in df_save.columns])
         df_save['cliente'] = cliente_nome
         
@@ -134,24 +134,20 @@ def salvar_dados_batch(df, cliente_nome):
 
 @st.cache_data(ttl=600)
 def get_departamentos(cliente_nome):
-    """Busca departamentos com cache de 10 minutos"""
     df = run_query("SELECT nome FROM departamentos WHERE cliente = :cli ORDER BY nome", {'cli': cliente_nome})
     return df['nome'].tolist() if df is not None else []
 
 def calcular_progresso_vetorizado(df):
-    """Cálculo performático de progresso (vetorizado)"""
     if df.empty: return pd.Series(dtype=float)
-    alvo = df['alvo'].where(df['alvo'] != 0, 1) # Evita div zero
+    alvo = df['alvo'].where(df['alvo'] != 0, 1)
     return (df['avanco'] / alvo).clip(0, 1)
 
 def classificar_prazo_vetorizado(df):
-    """Classificação de prazos sem loops"""
     if df.empty or 'prazo' not in df.columns: return pd.Series(dtype=str)
     
     hoje = pd.Timestamp(date.today())
     classif = pd.Series("Sem Prazo", index=df.index)
     
-    # Máscaras booleanas
     mask_done = df['status'] == 'Concluído'
     mask_has_date = df['prazo'].notna() & ~mask_done
     
@@ -167,15 +163,15 @@ def classificar_prazo_vetorizado(df):
     return classif
 
 # ==========================================
-# 4. COMPONENTES DE UI (REUTILIZÁVEIS)
+# 4. COMPONENTES DE UI
 # ==========================================
 
-def render_metric_card(label, value, delta=None, help_text=None):
+# CORREÇÃO AQUI: Adicionado delta_color aos argumentos aceitos
+def render_metric_card(label, value, delta=None, help_text=None, delta_color="normal"):
     """Componente de métrica padronizado"""
-    st.metric(label=label, value=value, delta=delta, help=help_text)
+    st.metric(label=label, value=value, delta=delta, delta_color=delta_color, help=help_text)
 
 def show_login_page():
-    """Tela de login (Modo Texto Puro para compatibilidade)"""
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.image("https://cdn-icons-png.flaticon.com/512/1533/1533913.png", width=80)
@@ -187,9 +183,9 @@ def show_login_page():
         with tab_login:
             with st.form("login_form"):
                 u = st.text_input("Usuário", placeholder="seu_usuario")
-                p = st.text_input("Senha", type="password", placeholder="••••••••")
+                p = st.text_input("Senha", type="password")
                 if st.form_submit_button("Entrar", type="primary", use_container_width=True):
-                    # CORREÇÃO: Comparação direta de texto (sem hash)
+                    # Login sem hash para compatibilidade com dados existentes
                     res = run_query("SELECT * FROM users WHERE username=:u AND password=:p", 
                                   {'u': u, 'p': p})
                     if res is not None and not res.empty:
@@ -209,7 +205,6 @@ def show_login_page():
                     if nu and np_text and nc:
                         exists = run_query("SELECT 1 FROM users WHERE username=:u", {'u': nu})
                         if exists is not None and exists.empty:
-                            # CORREÇÃO: Inserção direta de texto (sem hash)
                             run_query("INSERT INTO users (username, password, name, cliente) VALUES (:u, :p, :n, :c)",
                                      {'u': nu, 'p': np_text, 'n': nn, 'c': nc}, is_select=False)
                             st.success("Conta criada! Acesse pelo login.")
@@ -223,12 +218,10 @@ def show_login_page():
 # ==========================================
 
 def render_dashboard(df):
-    """Visão analítica com foco em UX e clareza de dados"""
     if df.empty:
         st.info("💡 Comece cadastrando seus objetivos no Painel de Gestão.")
         return
 
-    # Pré-processamento das métricas
     df_krs = df[df['kr'].notna() & (df['kr'] != '')].copy()
     if df_krs.empty:
         st.warning("Nenhum KR definido para análise.")
@@ -245,6 +238,7 @@ def render_dashboard(df):
         render_metric_card("Progresso Médio", f"{avg_prog:.1%}")
     with m3:
         atrasados = len(df_krs[df_krs['classificacao_prazo'] == "Atrasado"])
+        # Agora funciona porque a função aceita delta_color
         render_metric_card("KRs Atrasados", atrasados, delta=-atrasados if atrasados > 0 else 0, delta_color="inverse")
     with m4:
         concluidos = len(df_krs[df_krs['status'] == "Concluído"])
@@ -252,9 +246,7 @@ def render_dashboard(df):
 
     st.divider()
 
-    # Gráficos
     c1, c2 = st.columns([1, 1])
-    
     with c1:
         st.subheader("Progresso por Departamento")
         df_dept = df_krs.groupby('departamento')['progresso_pct'].mean().reset_index()
@@ -273,7 +265,6 @@ def render_dashboard(df):
         fig_status.update_layout(height=350, margin=dict(t=20, b=20, l=0, r=0))
         st.plotly_chart(fig_status, use_container_width=True)
 
-    # Prazo Heatmap
     st.subheader("Análise de Prazos e Urgência")
     df_prazo = df_krs['classificacao_prazo'].value_counts().reindex(CORES_PRAZO.keys()).fillna(0).reset_index()
     fig_prazo = px.bar(df_prazo, x='classificacao_prazo', y='count', 
@@ -286,9 +277,7 @@ def render_dashboard(df):
 # ==========================================
 
 def render_management_panel(df, cliente, depto_list):
-    """Painel de edição em tempo real com otimização de rerun"""
     
-    # 1. Criação Rápida
     with st.expander("➕ Novo Objetivo Estratégico", expanded=False):
         with st.form("new_obj_form", clear_on_submit=True):
             col_d, col_o, col_b = st.columns([1, 2, 0.5])
@@ -309,7 +298,6 @@ def render_management_panel(df, cliente, depto_list):
         st.info("Nenhum dado encontrado.")
         return
 
-    # 2. Tabs por Departamento
     depts = sorted(df['departamento'].unique())
     if not depts: return
     
@@ -323,12 +311,10 @@ def render_management_panel(df, cliente, depto_list):
                 mask_obj = (df['departamento'] == depto) & (df['objetivo'] == obj)
                 df_obj = df[mask_obj]
                 
-                # Cálculo de progresso do Objetivo (média dos KRs)
                 krs_validos = df_obj[df_obj['kr'] != '']
                 prog_obj = krs_validos['progresso_pct'].mean() if not krs_validos.empty else 0.0
                 
                 with st.expander(f"🎯 {obj} — {prog_obj:.0%}", expanded=True):
-                    # Ações do Objetivo
                     c_title, c_del = st.columns([5, 1])
                     new_title = c_title.text_input("Editar Objetivo", value=obj, key=f"edit_obj_{depto}_{obj}")
                     if new_title != obj:
@@ -341,7 +327,6 @@ def render_management_panel(df, cliente, depto_list):
                         st.session_state.needs_save = True
                         st.rerun()
 
-                    # Listagem de KRs e suas tarefas
                     krs = df_obj['kr'].unique()
                     for kr in krs:
                         if not kr: continue
@@ -351,7 +336,7 @@ def render_management_panel(df, cliente, depto_list):
                         
                         st.markdown(f"**🔑 KR: {kr}**")
                         
-                        # Configuração do Data Editor
+                        # CORREÇÃO AQUI: Escondendo created_at e id
                         column_config = {
                             "tarefa": st.column_config.TextColumn("Tarefa", width="large", required=True),
                             "status": st.column_config.SelectboxColumn("Status", options=list(CORES_STATUS.keys()), required=True),
@@ -360,7 +345,13 @@ def render_management_panel(df, cliente, depto_list):
                             "progresso_pct": st.column_config.ProgressColumn("%", format="%.0f%%", min_value=0, max_value=1),
                             "prazo": st.column_config.DateColumn("Prazo", format="DD/MM/YYYY"),
                             "responsavel": st.column_config.TextColumn("Responsável"),
-                            "id": None, "departamento": None, "objetivo": None, "kr": None, "cliente": None
+                            # Esconder colunas técnicas
+                            "id": None, 
+                            "created_at": None,
+                            "departamento": None, 
+                            "objetivo": None, 
+                            "kr": None, 
+                            "cliente": None
                         }
 
                         edited_df = st.data_editor(
@@ -369,28 +360,23 @@ def render_management_panel(df, cliente, depto_list):
                             key=f"editor_{depto}_{obj}_{kr}",
                             use_container_width=True,
                             num_rows="dynamic",
-                            hide_index=True
+                            hide_index=True  # CORREÇÃO AQUI: Esconde a coluna de números (index)
                         )
 
-                        # Detecção de mudanças e atualização do state
                         if not edited_df.equals(df_kr_tasks):
-                            # Recalcular progresso vetorizado
                             edited_df['progresso_pct'] = calcular_progresso_vetorizado(edited_df)
                             edited_df['departamento'] = depto
                             edited_df['objetivo'] = obj
                             edited_df['kr'] = kr
                             edited_df['cliente'] = cliente
                             
-                            # Merge de volta no master
                             st.session_state.df_master = pd.concat([
                                 st.session_state.df_master.drop(df_kr_tasks.index),
                                 edited_df
                             ], ignore_index=True)
                             st.session_state.needs_save = True
                             st.session_state.last_edit_time = time.time()
-                            # Nota: Sem st.rerun() aqui para permitir edição fluida
 
-                    # Botão para novo KR
                     if st.button(f"➕ Adicionar KR em '{obj}'", key=f"add_kr_{depto}_{obj}"):
                         new_kr_row = {
                             'departamento': depto, 'objetivo': obj, 'kr': 'Novo KR', 'tarefa': 'Nova Tarefa',
@@ -402,7 +388,7 @@ def render_management_panel(df, cliente, depto_list):
                         st.rerun()
 
 # ==========================================
-# 7. EXECUÇÃO PRINCIPAL (MAIN LOOP)
+# 7. EXECUÇÃO PRINCIPAL
 # ==========================================
 
 def main():
@@ -415,7 +401,6 @@ def main():
         show_login_page()
         return
 
-    # --- Sidebar ---
     user = st.session_state.user
     with st.sidebar:
         st.title("🎯 OKR Master")
@@ -428,7 +413,6 @@ def main():
         st.spacer = st.empty()
         st.divider()
         
-        # Autosave feedback
         if st.session_state.needs_save:
             if st.button("💾 Salvar Alterações", type="primary", use_container_width=True):
                 if salvar_dados_batch(st.session_state.df_master, user['cliente']):
@@ -442,7 +426,6 @@ def main():
             st.session_state.user = None
             st.rerun()
 
-    # --- Conteúdo Principal ---
     if menu == "📊 Dashboard":
         st.title("Dashboard Analítico")
         render_dashboard(st.session_state.df_master)
