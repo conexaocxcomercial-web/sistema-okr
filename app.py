@@ -3,7 +3,6 @@ import pandas as pd
 import numpy as np
 import os
 import time
-import hashlib
 from io import BytesIO
 from datetime import date, datetime
 from sqlalchemy import create_engine, text
@@ -59,7 +58,7 @@ CORES_PRAZO = {
 }
 
 # ==========================================
-# 2. CAMADA DE DADOS E SEGURANÇA
+# 2. CAMADA DE DADOS
 # ==========================================
 
 @st.cache_resource
@@ -78,10 +77,6 @@ def get_engine():
         st.stop()
 
 engine = get_engine()
-
-def hash_password(password):
-    """Gera hash SHA-256 para segurança básica"""
-    return hashlib.sha256(str.encode(password)).hexdigest()
 
 def run_query(query, params=None, is_select=True):
     """Abstração segura para execução de queries"""
@@ -111,9 +106,12 @@ def carregar_dados_cliente(cliente_nome):
                                    'responsavel', 'prazo', 'avanco', 'alvo', 'progresso_pct', 'cliente'])
     
     # Normalização de tipos
-    df['prazo'] = pd.to_datetime(df['prazo'], errors='coerce')
+    if 'prazo' in df.columns:
+        df['prazo'] = pd.to_datetime(df['prazo'], errors='coerce')
+    
     for col in ['avanco', 'alvo', 'progresso_pct']:
-        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+        if col in df.columns:
+            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
     
     return df
 
@@ -177,7 +175,7 @@ def render_metric_card(label, value, delta=None, help_text=None):
     st.metric(label=label, value=value, delta=delta, help=help_text)
 
 def show_login_page():
-    """Tela de login com UX moderna e segurança (password hashing)"""
+    """Tela de login (Modo Texto Puro para compatibilidade)"""
     col1, col2, col3 = st.columns([1, 1.5, 1])
     with col2:
         st.image("https://cdn-icons-png.flaticon.com/512/1533/1533913.png", width=80)
@@ -191,8 +189,9 @@ def show_login_page():
                 u = st.text_input("Usuário", placeholder="seu_usuario")
                 p = st.text_input("Senha", type="password", placeholder="••••••••")
                 if st.form_submit_button("Entrar", type="primary", use_container_width=True):
+                    # CORREÇÃO: Comparação direta de texto (sem hash)
                     res = run_query("SELECT * FROM users WHERE username=:u AND password=:p", 
-                                  {'u': u, 'p': hash_password(p)})
+                                  {'u': u, 'p': p})
                     if res is not None and not res.empty:
                         st.session_state.user = res.iloc[0].to_dict()
                         st.session_state.df_master = carregar_dados_cliente(st.session_state.user['cliente'])
@@ -203,15 +202,16 @@ def show_login_page():
         with tab_reg:
             with st.form("reg_form"):
                 nu = st.text_input("Usuário")
-                np = st.text_input("Senha", type="password")
+                np_text = st.text_input("Senha", type="password")
                 nn = st.text_input("Nome Completo")
                 nc = st.text_input("Empresa/Cliente")
                 if st.form_submit_button("Criar Conta", use_container_width=True):
-                    if nu and np and nc:
+                    if nu and np_text and nc:
                         exists = run_query("SELECT 1 FROM users WHERE username=:u", {'u': nu})
                         if exists is not None and exists.empty:
+                            # CORREÇÃO: Inserção direta de texto (sem hash)
                             run_query("INSERT INTO users (username, password, name, cliente) VALUES (:u, :p, :n, :c)",
-                                     {'u': nu, 'p': hash_password(np), 'n': nn, 'c': nc}, is_select=False)
+                                     {'u': nu, 'p': np_text, 'n': nn, 'c': nc}, is_select=False)
                             st.success("Conta criada! Acesse pelo login.")
                         else:
                             st.error("Usuário já existe.")
